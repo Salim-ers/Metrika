@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 // Route de diagnostic TEMPORAIRE (protégée par clé). À supprimer après usage.
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 250;
 
 export async function GET(req: NextRequest) {
   if (req.nextUrl.searchParams.get("k") !== "metrika-diag-9f3a") {
