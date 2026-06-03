@@ -46,10 +46,8 @@ export async function generateCctp(params: {
   context?: string;
   planContext?: string;
 }): Promise<CctpSectionResult[]> {
-  // Génération séquentielle pour préserver les quotas API.
-  const out: CctpSectionResult[] = [];
-  for (const lot of params.lots) {
-    out.push(await generateCctpSection({ lot, ...params }));
-  }
-  return out;
+  // Génération en parallèle : le temps total ≈ celui d'une seule section
+  // (évite les dépassements de délai quand plusieurs lots sont demandés).
+  const { lots, ...rest } = params;
+  return Promise.all(lots.map((lot) => generateCctpSection({ lot, ...rest })));
 }

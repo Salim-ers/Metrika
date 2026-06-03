@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { MetrikaLogo } from "@/components/layout/metrika-logo";
 import { formatMAD, formatDate, buildQuoteNumber } from "@/lib/utils";
 import { UNITS } from "@/lib/constants";
-import { Plus, Trash2, FileDown, CheckCircle2, ReceiptText } from "lucide-react";
+import { Plus, Trash2, FileDown, CheckCircle2, ReceiptText, Library } from "lucide-react";
 
 interface Line {
   designation: string;
@@ -19,6 +19,11 @@ interface Line {
   unit: string;
   quantity: number;
   unitPrice: number;
+}
+
+interface PriceItem {
+  id: string; designation: string; unit: string;
+  unitPrice: number; sellingPrice: number; lot?: string | null; category?: string | null;
 }
 
 const VAT_RATE = 20;
@@ -32,6 +37,20 @@ export default function DevisPage() {
     { designation: "", unit: "m²", quantity: 1, unitPrice: 0 },
   ]);
   const [validated, setValidated] = useState(false);
+  const [prices, setPrices] = useState<PriceItem[]>([]);
+
+  useEffect(() => {
+    fetch("/api/prices")
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((d) => setPrices(d.items ?? []))
+      .catch(() => setPrices([]));
+  }, []);
+
+  function pickFromLibrary(i: number, priceId: string) {
+    const p = prices.find((x) => x.id === priceId);
+    if (!p) return;
+    update(i, { designation: p.designation, unit: p.unit, unitPrice: p.sellingPrice });
+  }
 
   const quoteNumber = buildQuoteNumber("DEV", 1);
   const today = new Date();
@@ -116,11 +135,28 @@ export default function DevisPage() {
             <CardContent className="space-y-3">
               {lines.map((l, i) => (
                 <div key={i} className="rounded-lg border border-border/70 p-3">
+                  {prices.length > 0 && (
+                    <div className="mb-2 flex items-center gap-2">
+                      <Library className="size-3.5 shrink-0 text-gold-600" />
+                      <select
+                        value=""
+                        onChange={(e) => { pickFromLibrary(i, e.target.value); e.currentTarget.value = ""; }}
+                        className="h-8 w-full rounded-md border border-input bg-card px-2 text-xs text-muted-foreground"
+                      >
+                        <option value="">Choisir dans la bibliothèque de prix… (ou saisir manuellement)</option>
+                        {prices.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.designation} — {formatMAD(p.sellingPrice)}/{p.unit}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div className="mb-2 flex items-start gap-2">
                     <Input
                       value={l.designation}
                       onChange={(e) => update(i, { designation: e.target.value })}
-                      placeholder="Désignation de l’ouvrage"
+                      placeholder="Désignation de l’ouvrage (ou choisir ci-dessus)"
                       className="flex-1"
                     />
                     <button onClick={() => remove(i)} title="Supprimer" className="mt-2">

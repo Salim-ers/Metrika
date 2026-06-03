@@ -66,6 +66,18 @@ export default function CctpPage() {
 
   const allValidated = sections.length > 0 && sections.every((s) => s.validated);
 
+  async function exportCctp(kind: "docx" | "pdf") {
+    try {
+      const m = await import("@/lib/export-cctp");
+      const data = sections.map((s) => ({ lot: s.lot, content: s.content }));
+      if (kind === "docx") await m.exportCctpDocx(data);
+      else await m.exportCctpPdf(data);
+      toast.success("Export généré.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export impossible");
+    }
+  }
+
   return (
     <div className="animate-fade-up">
       <PageHeader
@@ -211,10 +223,10 @@ export default function CctpPage() {
                       : "Validez toutes les sections pour débloquer l’export final."}
                   </p>
                   <div className="flex gap-2">
-                    <Button variant="outline" disabled={!allValidated} onClick={() => toast.info("Export DOCX — branché sur le service docx (à finaliser).")}>
+                    <Button variant="outline" disabled={!allValidated} onClick={() => exportCctp("docx")}>
                       <FileDown className="size-4" /> DOCX
                     </Button>
-                    <Button variant="gold" disabled={!allValidated} onClick={() => toast.info("Export PDF — branché sur le service de génération PDF (à finaliser).")}>
+                    <Button variant="gold" disabled={!allValidated} onClick={() => exportCctp("pdf")}>
                       <FileDown className="size-4" /> PDF
                     </Button>
                   </div>

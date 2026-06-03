@@ -62,6 +62,18 @@ export default function DpgfPage() {
     setLines((arr) => arr.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   }
 
+  async function exportDpgf(kind: "excel" | "docx" | "pdf") {
+    try {
+      const m = await import("@/lib/export-dpgf");
+      if (kind === "excel") await m.exportDpgfExcel(lines);
+      else if (kind === "docx") await m.exportDpgfDocx(lines);
+      else await m.exportDpgfPdf(lines);
+      toast.success("Export généré.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export impossible");
+    }
+  }
+
   const total = lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
   const allValidated = lines.length > 0 && lines.every((l) => l.validated);
 
@@ -180,9 +192,9 @@ export default function DpgfPage() {
                 </table>
 
                 <div className="mt-5 flex justify-end gap-2">
-                  <Button variant="outline" disabled={!allValidated} onClick={() => toast.info("Export Excel — branché sur le service ExcelJS.")}><FileDown className="size-4" /> Excel</Button>
-                  <Button variant="outline" disabled={!allValidated} onClick={() => toast.info("Export DOCX.")}><FileDown className="size-4" /> DOCX</Button>
-                  <Button variant="gold" disabled={!allValidated} onClick={() => toast.info("Export PDF.")}><FileDown className="size-4" /> PDF</Button>
+                  <Button variant="outline" disabled={!allValidated} onClick={() => exportDpgf("excel")}><FileDown className="size-4" /> Excel</Button>
+                  <Button variant="outline" disabled={!allValidated} onClick={() => exportDpgf("docx")}><FileDown className="size-4" /> DOCX</Button>
+                  <Button variant="gold" disabled={!allValidated} onClick={() => exportDpgf("pdf")}><FileDown className="size-4" /> PDF</Button>
                 </div>
               </CardContent>
             </Card>
