@@ -63,66 +63,80 @@ export async function exportDevisPdf(d: DevisData): Promise<void> {
   k.text("TVA : " + d.vatRate + " %", W - M - 10, k.y - 11, { size: 8.5, bold: true, align: "right" });
   k.y -= 30;
 
-  // ── Tableau ──
-  const totR = W - M - 8, puR = W - M - 90, qtyR = W - M - 165, uX = W - M - 215, desigX = M + 8;
-  const desigW = uX - desigX - 8;
+  // ── Tableau (colonnes alignées, bandes calées sur la ligne de base) ──
+  const totR = W - M - 10, puR = W - M - 100, qtyR = W - M - 170, uX = W - M - 225, desigX = M + 10;
+  const desigW = uX - desigX - 12;
   const head = () => {
-    k.page.drawRectangle({ x: M, y: k.y - 16, width: W - 2 * M, height: 20, color: C.NAVY });
-    k.text("DÉSIGNATION", desigX, k.y - 11, { size: 8, bold: true, color: C.WHITE });
-    k.text("UNITÉ", uX, k.y - 11, { size: 8, bold: true, color: C.WHITE });
-    k.text("QTÉ", qtyR, k.y - 11, { size: 8, bold: true, color: C.WHITE, align: "right" });
-    k.text("P.U. HT", puR, k.y - 11, { size: 8, bold: true, color: C.WHITE, align: "right" });
-    k.text("TOTAL HT", totR, k.y - 11, { size: 8, bold: true, color: C.WHITE, align: "right" });
-    k.y -= 24;
+    k.page.drawRectangle({ x: M, y: k.y - 18, width: W - 2 * M, height: 22, color: C.NAVY });
+    k.text("DÉSIGNATION", desigX, k.y - 12, { size: 8, bold: true, color: C.WHITE });
+    k.text("UNITÉ", uX, k.y - 12, { size: 8, bold: true, color: C.WHITE });
+    k.text("QTÉ", qtyR, k.y - 12, { size: 8, bold: true, color: C.WHITE, align: "right" });
+    k.text("P.U. HT", puR, k.y - 12, { size: 8, bold: true, color: C.WHITE, align: "right" });
+    k.text("MONTANT HT", totR, k.y - 12, { size: 8, bold: true, color: C.WHITE, align: "right" });
+    k.y -= 26;
   };
   head();
   let zebra = false;
   for (const l of rows) {
     const wl = k.wrap(l.designation, 9, true, desigW);
-    const rowH = wl.length * 11 + 8;
-    if (k.ensure(rowH + 4)) head();
-    if (zebra) k.page.drawRectangle({ x: M, y: k.y - rowH + 6, width: W - 2 * M, height: rowH, color: C.ZEBRA });
+    const rowH = Math.max(22, wl.length * 12 + 10);
+    if (k.ensure(rowH)) head();
+    const top = k.y;
+    if (zebra) k.page.drawRectangle({ x: M, y: top - rowH, width: W - 2 * M, height: rowH, color: C.ZEBRA });
     zebra = !zebra;
-    wl.forEach((ln, kk) => k.text(ln, desigX, k.y - kk * 11, { size: 9, bold: true }));
-    k.text(l.unit, uX, k.y, { size: 8.5, color: C.GREY });
-    k.text(String(l.quantity), qtyR, k.y, { size: 9, align: "right" });
-    k.text(fmtMad(l.unitPrice), puR, k.y, { size: 9, align: "right" });
-    k.text(fmtMad(l.quantity * l.unitPrice), totR, k.y, { size: 9, bold: true, align: "right" });
-    k.y -= rowH;
-    k.hr(k.y + 5);
+    const base = top - 14;
+    wl.forEach((ln, i) => k.text(ln, desigX, base - i * 12, { size: 9, bold: true }));
+    k.text(l.unit, uX, base, { size: 8.5, color: C.GREY });
+    k.text(String(l.quantity), qtyR, base, { size: 9, align: "right" });
+    k.text(fmtMad(l.unitPrice), puR, base, { size: 9, align: "right" });
+    k.text(fmtMad(l.quantity * l.unitPrice), totR, base, { size: 9, bold: true, align: "right" });
+    k.y = top - rowH;
+    k.hr(k.y, C.LIGHT, 0.4);
   }
+  k.hr(k.y, C.NAVY, 0.8);
 
-  // ── Totaux (encadré à droite) + signature (à gauche) ──
-  k.ensure(150);
-  const boxW = 230, boxX = W - M - boxW, boxTop = k.y - 6;
-  k.text("Total HT", boxX + 12, boxTop - 4, { size: 9.5, color: C.GREY });
-  k.text(fmtMad(ht), totR, boxTop - 4, { size: 9.5, align: "right" });
-  k.text("TVA (" + d.vatRate + " %)", boxX + 12, boxTop - 20, { size: 9.5, color: C.GREY });
-  k.text(fmtMad(vat), totR, boxTop - 20, { size: 9.5, align: "right" });
-  k.page.drawRectangle({ x: boxX, y: boxTop - 50, width: boxW, height: 24, color: C.NAVY });
-  k.text("TOTAL TTC", boxX + 12, boxTop - 42, { size: 11, bold: true, color: C.WHITE });
-  k.text(fmtMad(ttc) + " MAD", totR, boxTop - 42, { size: 12, bold: true, color: C.GOLD, align: "right" });
+  // ── Bloc bas : cachet (gauche) + totaux (droite), parfaitement alignés ──
+  const BLOCK_H = 94;
+  k.ensure(BLOCK_H + 80);
+  const blockTop = k.y - 18;
 
-  // Bloc signature / cachet
-  const sigY = boxTop - 4, sigW = 200, sigH = 90;
-  k.page.drawRectangle({ x: M, y: sigY - sigH, width: sigW, height: sigH, borderColor: C.LIGHT, borderWidth: 0.7 });
-  k.text("Cachet et signature", M + 10, sigY - 14, { size: 8.5, bold: true, color: C.GOLD });
-  k.text("Bon pour accord", M + 10, sigY - 28, { size: 8, color: C.GREY });
+  // Totaux (droite)
+  const boxW = 240, boxX = W - M - boxW;
+  k.text("Total HT", boxX + 12, blockTop - 6, { size: 9.5, color: C.GREY });
+  k.text(fmtMad(ht), totR, blockTop - 6, { size: 9.5, align: "right" });
+  k.text("TVA (" + d.vatRate + " %)", boxX + 12, blockTop - 24, { size: 9.5, color: C.GREY });
+  k.text(fmtMad(vat), totR, blockTop - 24, { size: 9.5, align: "right" });
+  k.page.drawRectangle({ x: boxX, y: blockTop - 66, width: boxW, height: 28, color: C.NAVY });
+  k.text("TOTAL TTC", boxX + 12, blockTop - 56, { size: 11, bold: true, color: C.WHITE });
+  k.text(fmtMad(ttc) + " MAD", totR, blockTop - 56, { size: 12, bold: true, color: C.GOLD, align: "right" });
+
+  // Cachet & signature (gauche), même hauteur de bloc
+  const sigW = 240, sigBottom = blockTop - BLOCK_H;
+  k.page.drawRectangle({ x: M, y: sigBottom, width: sigW, height: BLOCK_H, borderColor: C.LIGHT, borderWidth: 0.8 });
+  k.text("CACHET ET SIGNATURE", M + 12, blockTop - 14, { size: 8, bold: true, color: C.GOLD });
   if (k.stampImg) {
-    const sw = 80, sh = (k.stampImg.height / k.stampImg.width) * sw;
-    try { k.page.drawImage(k.stampImg, { x: M + 14, y: sigY - sigH + 8, width: sw, height: Math.min(sh, sigH - 36) }); } catch { /* ignore */ }
+    const maxW = sigW - 36, maxH = BLOCK_H - 38;
+    let sw = maxW, sh = (k.stampImg.height / k.stampImg.width) * sw;
+    if (sh > maxH) { sh = maxH; sw = (k.stampImg.width / k.stampImg.height) * sh; }
+    try { k.page.drawImage(k.stampImg, { x: M + 14, y: sigBottom + 10, width: sw, height: sh }); } catch { /* ignore */ }
+  } else {
+    k.text("Bon pour accord, le ……  /  ……  /  20……", M + 12, sigBottom + 14, { size: 8, color: C.GREY });
   }
-  k.y = boxTop - 60;
 
-  // ── Conditions de paiement + coordonnées bancaires ──
-  k.ensure(60);
-  k.y -= 6;
+  // ── Modalités de paiement + coordonnées bancaires (pleine largeur, SOUS les blocs) ──
+  k.y = sigBottom - 26;
+  k.ensure(70);
+  k.hr(k.y + 10, C.LIGHT, 0.5);
   if (c?.paymentTerms) {
-    k.text("Modalités de paiement", M, k.y, { size: 8, bold: true, color: C.NAVY }); k.y -= 12;
+    k.text("Modalités de paiement", M, k.y, { size: 8.5, bold: true, color: C.NAVY }); k.y -= 13;
     for (const ln of k.wrap(c.paymentTerms, 8, false, W - 2 * M)) { k.text(ln, M, k.y, { size: 8, color: C.GREY }); k.y -= 11; }
+    k.y -= 5;
   }
-  const bank = [c?.bankName && `Banque : ${c.bankName}`, c?.rib && `RIB : ${c.rib}`, c?.iban && `IBAN : ${c.iban}`, c?.swift && `SWIFT : ${c.swift}`].filter(Boolean).join("   ·   ");
-  if (bank) { k.y -= 2; k.text("Coordonnées bancaires", M, k.y, { size: 8, bold: true, color: C.NAVY }); k.y -= 12; k.text(bank, M, k.y, { size: 8, color: C.GREY }); }
+  const bank = [c?.bankName && `Banque : ${c.bankName}`, c?.rib && `RIB : ${c.rib}`, c?.iban && `IBAN : ${c.iban}`, c?.swift && `SWIFT : ${c.swift}`].filter(Boolean).join("      ·      ");
+  if (bank) {
+    k.text("Coordonnées bancaires", M, k.y, { size: 8.5, bold: true, color: C.NAVY }); k.y -= 13;
+    for (const ln of k.wrap(bank, 8, false, W - 2 * M)) { k.text(ln, M, k.y, { size: 8, color: C.GREY }); k.y -= 11; }
+  }
 
   await k.finish(`${d.quoteNumber || "devis"}.pdf`);
 }
