@@ -1,0 +1,353 @@
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  Metrika Métrage BTP Maroc — Schéma de base de données         ║
+// ║  PostgreSQL + Prisma                                           ║
+// ╚══════════════════════════════════════════════════════════════╝
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Authentification (utilisateur unique) ────────────────────────
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  passwordHash  String
+  role          UserRole  @default(ADMIN)
+  twoFactorSecret String?         // réservé pour la 2FA future
+  twoFactorEnabled Boolean @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sessions      Session[]
+  accounts      Account[]
+  treatments    Treatment[]
+  documents     Document[]
+}
+
+enum UserRole {
+  ADMIN
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ── Paramètres entreprise (en-tête de tous les documents) ────────
+model Company {
+  id            String   @id @default(cuid())
+  name          String                          // Raison sociale
+  legalForm     String?                         // SARL, SA, etc.
+  logoUrl       String?
+  stampUrl      String?                         // Cachet / signature
+  // Informations légales Maroc
+  ice           String?                         // Identifiant Commun de l'Entreprise
+  rc            String?                         // Registre de Commerce
+  ifNumber      String?                         // Identifiant Fiscal
+  cnss          String?                         // N° CNSS
+  patente       String?                         // Taxe professionnelle
+  capital       String?
+  // Coordonnées
+  address       String?
+  city          String?
+  phone         String?
+  email         String?
+  website       String?
+  // Bancaire
+  bankName      String?
+  rib           String?
+  iban          String?
+  swift         String?
+  // Réglages devis
+  vatRate       Float    @default(20)           // TVA Maroc 20 %
+  quotePrefix   String   @default("DEV")
+  quoteCounter  Int      @default(1)
+  paymentTerms  String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// ── Clients & projets ────────────────────────────────────────────
+model Client {
+  id        String   @id @default(cuid())
+  name      String
+  ice       String?
+  contact   String?
+  address   String?
+  city      String?
+  phone     String?
+  email     String?
+  createdAt DateTime @default(now())
+  projects  Project[]
+  quotes    Quote[]
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  reference   String?
+  type        String?                          // Logement, tertiaire, industriel…
+  location    String?
+  clientId    String?
+  client      Client?  @relation(fields: [clientId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  documents   Document[]
+  cctps       Cctp[]
+  dpgfs       Dpgf[]
+  quotes      Quote[]
+}
+
+// ── Documents & historique des traitements ───────────────────────
+model Document {
+  id          String        @id @default(cuid())
+  name        String
+  kind        DocumentKind
+  mimeType    String?
+  size        Int?
+  storageKey  String                            // chemin local ou clé S3
+  status      DocStatus     @default(DRAFT)
+  projectId   String?
+  project     Project?      @relation(fields: [projectId], references: [id])
+  userId      String?
+  user        User?         @relation(fields: [userId], references: [id])
+  treatmentId String?
+  treatment   Treatment?    @relation(fields: [treatmentId], references: [id])
+  createdAt   DateTime      @default(now())
+}
+
+enum DocumentKind {
+  UPLOAD
+  PDF_MERGED
+  IMAGE_PDF
+  CCTP
+  DPGF
+  SOUS_DETAIL
+  DEVIS
+  OTHER
+}
+
+enum DocStatus {
+  DRAFT          // brouillon, modifiable
+  PENDING_REVIEW // en attente de validation humaine
+  VALIDATED      // validé par l'utilisateur
+  GENERATED      // document officiel final généré
+  ARCHIVED
+}
+
+// Trace toute opération d'un agent IA (le « journal »)
+model Treatment {
+  id          String        @id @default(cuid())
+  agent       AgentType
+  action      String                            // ex: "Fusion PDF", "Génération CCTP"
+  status      TreatmentStatus @default(QUEUED)
+  inputMeta   Json?
+  outputMeta  Json?
+  error       String?       @db.Text
+  userId      String?
+  user        User?         @relation(fields: [userId], references: [id])
+  documents   Document[]
+  createdAt   DateTime      @default(now())
+  finishedAt  DateTime?
+}
+
+enum AgentType {
+  PDF
+  CCTP
+  DPGF
+  SOUS_DETAIL
+  PRICING
+  DEVIS
+}
+
+enum TreatmentStatus {
+  QUEUED
+  RUNNING
+  AWAITING_VALIDATION
+  DONE
+  FAILED
+}
+
+// ── Agent CCTP ────────────────────────────────────────────────────
+model Cctp {
+  id          String     @id @default(cuid())
+  title       String
+  projectType String?
+  projectId   String?
+  project     Project?   @relation(fields: [projectId], references: [id])
+  status      DocStatus  @default(DRAFT)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  sections    CctpSection[]
+  dpgfs       Dpgf[]
+}
+
+model CctpSection {
+  id       String @id @default(cuid())
+  cctpId   String
+  cctp     Cctp   @relation(fields: [cctpId], references: [id], onDelete: Cascade)
+  lot      String              // ex: "Gros Œuvre"
+  order    Int    @default(0)
+  content  String @db.Text     // contenu structuré (markdown) éditable avant export
+}
+
+// ── Agent DPGF (Décomposition du Prix Global et Forfaitaire) ──────
+model Dpgf {
+  id        String     @id @default(cuid())
+  title     String
+  projectId String?
+  project   Project?   @relation(fields: [projectId], references: [id])
+  cctpId    String?
+  cctp      Cctp?      @relation(fields: [cctpId], references: [id])
+  status    DocStatus  @default(PENDING_REVIEW)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  lines     DpgfLine[]
+}
+
+model DpgfLine {
+  id           String   @id @default(cuid())
+  dpgfId       String
+  dpgf         Dpgf     @relation(fields: [dpgfId], references: [id], onDelete: Cascade)
+  lot          String
+  code         String?                          // n° d'article
+  designation  String
+  description  String?  @db.Text
+  unit         String                           // m², ml, m³, U, ens, kg…
+  quantity     Float    @default(0)
+  unitPrice    Float    @default(0)
+  // Provenance de la quantité : "plan", "cctp", "manuel"
+  quantitySource String?
+  validated    Boolean  @default(false)         // validation humaine ligne par ligne
+  order        Int      @default(0)
+  sousDetail   SousDetail?
+}
+
+// ── Agent Sous-détail de prix ─────────────────────────────────────
+model SousDetail {
+  id          String   @id @default(cuid())
+  dpgfLineId  String?  @unique
+  dpgfLine    DpgfLine? @relation(fields: [dpgfLineId], references: [id])
+  designation String
+  unit        String
+  yield       Float    @default(1)              // rendement (U/jour)
+  // Synthèse calculée
+  debourseSec     Float @default(0)
+  generalFeesRate Float @default(0.10)          // frais généraux
+  profitRate      Float @default(0.10)          // bénéfice
+  sellingPrice    Float @default(0)             // prix de vente unitaire
+  status      DocStatus @default(DRAFT)
+  createdAt   DateTime @default(now())
+  components  SousDetailComponent[]
+}
+
+model SousDetailComponent {
+  id           String      @id @default(cuid())
+  sousDetailId String
+  sousDetail   SousDetail  @relation(fields: [sousDetailId], references: [id], onDelete: Cascade)
+  type         ComponentType
+  designation  String
+  unit         String
+  quantity     Float       @default(0)          // par unité d'ouvrage
+  unitCost     Float       @default(0)
+}
+
+enum ComponentType {
+  MAIN_OEUVRE   // Main-d'œuvre
+  MATERIAUX     // Matériaux
+  MATERIEL      // Matériel
+}
+
+// ── Bibliothèque de prix ──────────────────────────────────────────
+model PriceItem {
+  id            String   @id @default(cuid())
+  designation   String
+  unit          String
+  unitPrice     Float                           // déboursé / prix d'achat
+  category      String?
+  lot           String?
+  supplier      String?
+  source        String?
+  marginRate    Float    @default(0.10)
+  generalFeesRate Float  @default(0.10)
+  sellingPrice  Float    @default(0)            // prix de vente recommandé
+  updatedAt     DateTime @updatedAt
+  createdAt     DateTime @default(now())
+  history       PriceHistory[]
+
+  @@index([designation])
+  @@index([lot, category])
+}
+
+model PriceHistory {
+  id          String   @id @default(cuid())
+  priceItemId String
+  priceItem   PriceItem @relation(fields: [priceItemId], references: [id], onDelete: Cascade)
+  unitPrice   Float
+  sellingPrice Float
+  recordedAt  DateTime @default(now())
+}
+
+// ── Générateur de devis ───────────────────────────────────────────
+model Quote {
+  id          String      @id @default(cuid())
+  number      String      @unique               // DEV-2026-0001
+  title       String?
+  clientId    String?
+  client      Client?     @relation(fields: [clientId], references: [id])
+  projectId   String?
+  project     Project?    @relation(fields: [projectId], references: [id])
+  issueDate   DateTime    @default(now())
+  validityDays Int        @default(30)
+  vatRate     Float       @default(20)
+  totalHT     Float       @default(0)
+  totalVAT    Float       @default(0)
+  totalTTC    Float       @default(0)
+  notes       String?     @db.Text
+  status      DocStatus   @default(DRAFT)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  lines       QuoteLine[]
+}
+
+model QuoteLine {
+  id          String @id @default(cuid())
+  quoteId     String
+  quote       Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  designation String
+  description String? @db.Text
+  unit        String
+  quantity    Float  @default(1)
+  unitPrice   Float  @default(0)
+  total       Float  @default(0)
+  order       Int    @default(0)
+}
