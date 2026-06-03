@@ -18,6 +18,10 @@ interface Section { lot: string; content: string; validated?: boolean }
 export default function CctpPage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [projectType, setProjectType] = useState<string>(PROJECT_TYPES[0]);
+  const [projectName, setProjectName] = useState("");
+  const [owner, setOwner] = useState("");
+  const [architect, setArchitect] = useState("");
+  const [bet, setBet] = useState("");
   const [context, setContext] = useState("");
   const [sections, setSections] = useState<Section[]>([]);
   const [planFiles, setPlanFiles] = useState<File[]>([]);
@@ -76,8 +80,9 @@ export default function CctpPage() {
     try {
       const m = await import("@/lib/export-cctp");
       const data = sections.map((s) => ({ lot: s.lot, content: s.content }));
-      if (kind === "docx") await m.exportCctpDocx(data);
-      else await m.exportCctpPdf(data, company as never);
+      const meta = { projectName, projectType, owner, architect, bet };
+      if (kind === "docx") await m.exportCctpDocx(data, company as never, meta);
+      else await m.exportCctpPdf(data, company as never, meta);
       toast.success("Export généré.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Export impossible");
@@ -107,6 +112,26 @@ export default function CctpPage() {
               >
                 {PROJECT_TYPES.map((t) => <option key={t}>{t}</option>)}
               </select>
+            </div>
+
+            <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Page de garde (officielle)</p>
+              <div className="space-y-2">
+                <Label>Nom du projet</Label>
+                <input value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="Ex : Immeuble collectif de 11 logements" className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+              </div>
+              <div className="space-y-2">
+                <Label>Maître d’ouvrage</Label>
+                <input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="Ex : OPH Ariège" className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+              </div>
+              <div className="space-y-2">
+                <Label>Architecte / maîtrise d’œuvre</Label>
+                <input value={architect} onChange={(e) => setArchitect(e.target.value)} placeholder="Cabinet d’architecture…" className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+              </div>
+              <div className="space-y-2">
+                <Label>Bureau d’études techniques</Label>
+                <input value={bet} onChange={(e) => setBet(e.target.value)} placeholder="BET structure / fluides…" className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+              </div>
             </div>
 
             <div className="space-y-2">
