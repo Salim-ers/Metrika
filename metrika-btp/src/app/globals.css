@@ -1,0 +1,103 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Surfaces premium claires */
+    --background: 40 33% 98%;        /* blanc cassé chaud */
+    --foreground: 217 90% 12%;       /* marine profond */
+    --card: 0 0% 100%;
+    --card-foreground: 217 90% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 217 90% 12%;
+
+    /* Marine = primaire */
+    --primary: 217 51% 16%;          /* navy-700 #14233f */
+    --primary-foreground: 40 33% 98%;
+
+    /* Doré = accent */
+    --accent: 40 75% 54%;            /* gold-500 #e1a532 */
+    --accent-foreground: 217 90% 12%;
+
+    --secondary: 217 30% 96%;
+    --secondary-foreground: 217 51% 16%;
+    --muted: 217 24% 95%;
+    --muted-foreground: 217 14% 42%;
+
+    --destructive: 0 72% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 56% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 217 90% 12%;
+
+    --border: 217 22% 90%;
+    --input: 217 22% 88%;
+    --ring: 40 75% 54%;
+    --radius: 0.85rem;
+
+    /* Sidebar marine profond */
+    --sidebar: 217 90% 12%;
+    --sidebar-foreground: 40 33% 96%;
+    --sidebar-muted: 217 30% 62%;
+    --sidebar-accent: 40 75% 54%;
+    --sidebar-border: 217 45% 22%;
+  }
+
+  .dark {
+    --background: 217 60% 8%;
+    --foreground: 40 33% 95%;
+    --card: 217 52% 11%;
+    --card-foreground: 40 33% 95%;
+    --popover: 217 52% 11%;
+    --popover-foreground: 40 33% 95%;
+    --primary: 40 75% 54%;
+    --primary-foreground: 217 90% 10%;
+    --accent: 40 75% 54%;
+    --accent-foreground: 217 90% 10%;
+    --secondary: 217 40% 16%;
+    --secondary-foreground: 40 33% 95%;
+    --muted: 217 40% 16%;
+    --muted-foreground: 217 18% 64%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 46% 44%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 217 90% 10%;
+    --border: 217 40% 20%;
+    --input: 217 40% 20%;
+    --ring: 40 75% 54%;
+    --sidebar: 217 75% 6%;
+    --sidebar-foreground: 40 33% 95%;
+    --sidebar-muted: 217 24% 58%;
+    --sidebar-accent: 40 75% 54%;
+    --sidebar-border: 217 45% 18%;
+  }
+
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "ss01", "cv01", "tnum";
+  }
+  ::selection {
+    @apply bg-gold-500/30 text-navy-900;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  /* Numéros / KPI : chiffres tabulaires fins et élégants */
+  .kpi-number {
+    @apply font-display tabular-nums tracking-tight;
+    font-variation-settings: "opsz" 40;
+  }
+  .premium-divider {
+    background: linear-gradient(90deg, transparent, hsl(var(--accent) / 0.6), transparent);
+  }
+}

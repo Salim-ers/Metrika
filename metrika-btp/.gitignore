@@ -1,0 +1,14 @@
+node_modules
+.next
+.env
+.env*.local
+/uploads
+/generated
+*.log
+.DS_Store
+prisma/dev.db*
+
+# Outils & artefacts locaux
+.claude/
+*.tsbuildinfo
+next-env.d.ts

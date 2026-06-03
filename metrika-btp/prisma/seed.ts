@@ -40,9 +40,13 @@ async function main() {
     { designation: "Carrelage grès cérame 60x60", unit: "m²", unitPrice: 180, lot: "Revêtements", category: "Sol" },
     { designation: "Peinture vinylique 2 couches", unit: "m²", unitPrice: 35, lot: "Peinture", category: "Mur" },
   ];
-  for (const p of seedPrices) {
-    const sellingPrice = Math.round(p.unitPrice * 1.21);
-    await prisma.priceItem.create({ data: { ...p, sellingPrice } });
+  // Idempotent : on ne réinjecte les prix de démarrage que si la bibliothèque est vide
+  const priceCount = await prisma.priceItem.count();
+  if (priceCount === 0) {
+    for (const p of seedPrices) {
+      const sellingPrice = Math.round(p.unitPrice * 1.21);
+      await prisma.priceItem.create({ data: { ...p, sellingPrice } });
+    }
   }
 
   console.log(`✓ Seed terminé — connexion : ${email}`);
