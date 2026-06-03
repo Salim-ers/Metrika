@@ -1,6 +1,7 @@
 "use client";
 
-import { CompanyExport, downloadBlob, fmtMad, dataUrlToBytes, legalLines, winAnsiSafe } from "@/lib/export-common";
+import { CompanyExport, downloadBlob, fmtMad, dataUrlToBytes, legalLines } from "@/lib/export-common";
+import { createPdf } from "@/lib/pdf-kit";
 
 export interface DevisData {
   quoteNumber: string;
@@ -20,123 +21,110 @@ function totals(d: DevisData) {
   return { ht, vat, ttc: ht + vat };
 }
 
-// ── PDF (pdf-lib) ─────────────────────────────────────────────────
+// ── PDF officiel (kit Metrika) ────────────────────────────────────
 export async function exportDevisPdf(d: DevisData): Promise<void> {
-  const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
-  const NAVY = rgb(0.078, 0.137, 0.247), GOLD = rgb(0.882, 0.647, 0.196), GREY = rgb(0.45, 0.47, 0.52), LINE = rgb(0.85, 0.86, 0.88);
-  const doc = await PDFDocument.create();
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const W = 595.28, H = 841.89, M = 48;
-  let page = doc.addPage([W, H]); let y = H;
   const c = d.company;
+  const k = await createPdf(c);
+  const { C, W, M } = k;
   const rows = d.lines.filter((l) => l.designation.trim());
   const { ht, vat, ttc } = totals(d);
 
-  const text = (s: string, x: number, yy: number, o?: { size?: number; bold?: boolean; color?: ReturnType<typeof rgb>; align?: "right" }) => {
-    const ss = winAnsiSafe(s);
-    const size = o?.size ?? 9; const f = o?.bold ? bold : font;
-    const xx = o?.align === "right" ? x - f.widthOfTextAtSize(ss, size) : x;
-    page.drawText(ss, { x: xx, y: yy, size, font: f, color: o?.color ?? NAVY });
-  };
-  const wrap = (s: string, f: typeof font, size: number, maxW: number) => {
-    const words = s.split(/\s+/); const out: string[] = []; let cur = "";
-    for (const w of words) { const tt = cur ? cur + " " + w : w; if (f.widthOfTextAtSize(tt, size) > maxW && cur) { out.push(cur); cur = w; } else cur = tt; }
-    if (cur) out.push(cur); return out.length ? out : [""];
-  };
+  k.header({ title: "DEVIS", docNo: d.quoteNumber });
 
-  page.drawRectangle({ x: 0, y: H - 5, width: W, height: 5, color: GOLD });
-  y = H - M;
-
-  // Logo (ou nom)
-  const logo = dataUrlToBytes(c?.logoUrl);
-  let headerBottom = y;
-  if (logo) {
-    try {
-      const img = logo.mime.includes("png") ? await doc.embedPng(logo.bytes) : await doc.embedJpg(logo.bytes);
-      const lw = 130; const lh = (img.height / img.width) * lw;
-      page.drawImage(img, { x: M, y: y - lh, width: lw, height: lh });
-      headerBottom = y - lh;
-    } catch { /* image illisible : ignorer */ }
+  // ── Cartes Émetteur / Client ──
+  const gap = 14;
+  const colW = (W - 2 * M - gap) / 2;
+  const lx = M, rx = M + colW + gap;
+  const cardTop = k.y;
+  const emitLines = [
+    c?.name ?? "Metrika Métrage BTP",
+    [c?.legalForm, c?.capital && `Capital ${c.capital}`].filter(Boolean).join(" — "),
+    [c?.address, c?.city].filter(Boolean).join(", "),
+    [c?.phone, c?.email].filter(Boolean).join("  ·  "),
+  ].filter(Boolean) as string[];
+  const cliLines = [
+    d.clientName || "—",
+    d.clientAddress || "",
+    d.projectName ? "Projet : " + d.projectName : "",
+  ].filter(Boolean) as string[];
+  const cardH = 18 + Math.max(emitLines.length, cliLines.length) * 12 + 10;
+  for (const [bx, title, lines] of [[lx, "ÉMETTEUR", emitLines], [rx, "CLIENT", cliLines]] as const) {
+    k.page.drawRectangle({ x: bx, y: cardTop - cardH, width: colW, height: cardH, color: C.ZEBRA, borderColor: C.LIGHT, borderWidth: 0.5 });
+    k.text(title, bx + 10, cardTop - 14, { size: 8, bold: true, color: C.GOLD });
+    let yy = cardTop - 28;
+    lines.forEach((ln, i) => { k.text(ln, bx + 10, yy, { size: i === 0 ? 10 : 8, bold: i === 0, color: i === 0 ? C.NAVY : C.GREY }); yy -= 12; });
   }
-  if (!logo) { text(c?.name ?? "Metrika Métrage BTP", M, y - 6, { size: 14, bold: true }); headerBottom = y - 20; }
-  else if (c?.name) { text(c.name, M, headerBottom - 12, { size: 9, color: GREY }); headerBottom -= 16; }
+  k.y = cardTop - cardH - 16;
 
-  text("DEVIS", W - M, y - 4, { size: 22, bold: true, align: "right" });
-  text(d.quoteNumber, W - M, y - 22, { size: 10, color: GOLD, align: "right" });
-  y = Math.min(headerBottom, y - 34) - 14;
+  // ── Bandeau infos (date / validité / TVA) ──
+  k.page.drawRectangle({ x: M, y: k.y - 16, width: W - 2 * M, height: 20, color: C.ZEBRA });
+  k.text("Date d'émission : " + d.dateLabel, M + 10, k.y - 11, { size: 8.5 });
+  k.text("Validité : " + d.validity + " jours", M + 200, k.y - 11, { size: 8.5 });
+  k.text("TVA : " + d.vatRate + " %", W - M - 10, k.y - 11, { size: 8.5, bold: true, align: "right" });
+  k.y -= 30;
 
-  page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.6, color: LINE });
-  y -= 20;
-
-  const colR = W / 2 + 10;
-  text("ÉMETTEUR", M, y, { size: 8, bold: true, color: GOLD });
-  text("CLIENT", colR, y, { size: 8, bold: true, color: GOLD });
-  y -= 13;
-  text(c?.name ?? "Metrika Métrage BTP", M, y, { size: 10, bold: true });
-  text(d.clientName || "—", colR, y, { size: 10, bold: true });
-  y -= 12;
-  const emit = [c?.address, c?.city].filter(Boolean).join(", ");
-  if (emit) text(emit, M, y, { size: 8, color: GREY });
-  if (d.clientAddress) text(d.clientAddress, colR, y, { size: 8, color: GREY });
-  y -= 11;
-  const emit2 = [c?.phone, c?.email].filter(Boolean).join(" · ");
-  if (emit2) text(emit2, M, y, { size: 8, color: GREY });
-  if (d.projectName) text("Projet : " + d.projectName, colR, y, { size: 8, color: GREY });
-  y -= 20;
-
-  text("Date : " + d.dateLabel, M, y, { size: 9 });
-  text("Validité : " + d.validity + " jours", M + 170, y, { size: 9 });
-  text("TVA : " + d.vatRate + " %", M + 330, y, { size: 9 });
-  y -= 20;
-
-  const cQty = W - M - 200, cPu = W - M - 110, cTot = W - M;
+  // ── Tableau ──
+  const totR = W - M - 8, puR = W - M - 90, qtyR = W - M - 165, uX = W - M - 215, desigX = M + 8;
+  const desigW = uX - desigX - 8;
   const head = () => {
-    page.drawRectangle({ x: M, y: y - 16, width: W - 2 * M, height: 20, color: NAVY });
-    text("DÉSIGNATION", M + 8, y - 11, { size: 8, bold: true, color: rgb(1, 1, 1) });
-    text("QTÉ", cQty, y - 11, { size: 8, bold: true, color: rgb(1, 1, 1), align: "right" });
-    text("P.U.", cPu, y - 11, { size: 8, bold: true, color: rgb(1, 1, 1), align: "right" });
-    text("TOTAL HT", cTot, y - 11, { size: 8, bold: true, color: rgb(1, 1, 1), align: "right" });
-    y -= 26;
+    k.page.drawRectangle({ x: M, y: k.y - 16, width: W - 2 * M, height: 20, color: C.NAVY });
+    k.text("DÉSIGNATION", desigX, k.y - 11, { size: 8, bold: true, color: C.WHITE });
+    k.text("UNITÉ", uX, k.y - 11, { size: 8, bold: true, color: C.WHITE });
+    k.text("QTÉ", qtyR, k.y - 11, { size: 8, bold: true, color: C.WHITE, align: "right" });
+    k.text("P.U. HT", puR, k.y - 11, { size: 8, bold: true, color: C.WHITE, align: "right" });
+    k.text("TOTAL HT", totR, k.y - 11, { size: 8, bold: true, color: C.WHITE, align: "right" });
+    k.y -= 24;
   };
   head();
+  let zebra = false;
   for (const l of rows) {
-    const wl = wrap(l.designation, bold, 9, cQty - M - 20);
-    const rowH = wl.length * 11 + 10;
-    if (y - rowH < M + 110) { page = doc.addPage([W, H]); y = H - M; head(); }
-    wl.forEach((ln, k) => text(ln, M + 8, y - k * 11, { size: 9, bold: true }));
-    text(l.unit, M + 8, y - wl.length * 11, { size: 7.5, color: GREY });
-    text(String(l.quantity), cQty, y, { size: 9, align: "right" });
-    text(fmtMad(l.unitPrice), cPu, y, { size: 9, align: "right" });
-    text(fmtMad(l.quantity * l.unitPrice), cTot, y, { size: 9, bold: true, align: "right" });
-    y -= rowH;
-    page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.5, color: LINE });
+    const wl = k.wrap(l.designation, 9, true, desigW);
+    const rowH = wl.length * 11 + 8;
+    if (k.ensure(rowH + 4)) head();
+    if (zebra) k.page.drawRectangle({ x: M, y: k.y - rowH + 6, width: W - 2 * M, height: rowH, color: C.ZEBRA });
+    zebra = !zebra;
+    wl.forEach((ln, kk) => k.text(ln, desigX, k.y - kk * 11, { size: 9, bold: true }));
+    k.text(l.unit, uX, k.y, { size: 8.5, color: C.GREY });
+    k.text(String(l.quantity), qtyR, k.y, { size: 9, align: "right" });
+    k.text(fmtMad(l.unitPrice), puR, k.y, { size: 9, align: "right" });
+    k.text(fmtMad(l.quantity * l.unitPrice), totR, k.y, { size: 9, bold: true, align: "right" });
+    k.y -= rowH;
+    k.hr(k.y + 5);
   }
 
-  if (y < M + 110) { page = doc.addPage([W, H]); y = H - M; }
-  y -= 14;
-  const tx = W - M - 220;
-  text("Total HT", tx, y, { size: 9, color: GREY }); text(fmtMad(ht), cTot, y, { size: 9, align: "right" }); y -= 14;
-  text("TVA (" + d.vatRate + " %)", tx, y, { size: 9, color: GREY }); text(fmtMad(vat), cTot, y, { size: 9, align: "right" }); y -= 8;
-  page.drawLine({ start: { x: tx, y }, end: { x: cTot, y }, thickness: 0.6, color: NAVY }); y -= 16;
-  text("Total TTC", tx, y, { size: 11, bold: true }); text(fmtMad(ttc) + " MAD", cTot, y, { size: 11, bold: true, color: GOLD, align: "right" });
+  // ── Totaux (encadré à droite) + signature (à gauche) ──
+  k.ensure(150);
+  const boxW = 230, boxX = W - M - boxW, boxTop = k.y - 6;
+  k.text("Total HT", boxX + 12, boxTop - 4, { size: 9.5, color: C.GREY });
+  k.text(fmtMad(ht), totR, boxTop - 4, { size: 9.5, align: "right" });
+  k.text("TVA (" + d.vatRate + " %)", boxX + 12, boxTop - 20, { size: 9.5, color: C.GREY });
+  k.text(fmtMad(vat), totR, boxTop - 20, { size: 9.5, align: "right" });
+  k.page.drawRectangle({ x: boxX, y: boxTop - 50, width: boxW, height: 24, color: C.NAVY });
+  k.text("TOTAL TTC", boxX + 12, boxTop - 42, { size: 11, bold: true, color: C.WHITE });
+  k.text(fmtMad(ttc) + " MAD", totR, boxTop - 42, { size: 12, bold: true, color: C.GOLD, align: "right" });
 
-  // Cachet
-  const stamp = dataUrlToBytes(c?.stampUrl);
-  if (stamp) {
-    try {
-      const img = stamp.mime.includes("png") ? await doc.embedPng(stamp.bytes) : await doc.embedJpg(stamp.bytes);
-      const sw = 90; const sh = (img.height / img.width) * sw;
-      page.drawImage(img, { x: M, y: Math.max(M + 40, y - sh), width: sw, height: sh });
-    } catch { /* ignore */ }
+  // Bloc signature / cachet
+  const sigY = boxTop - 4, sigW = 200, sigH = 90;
+  k.page.drawRectangle({ x: M, y: sigY - sigH, width: sigW, height: sigH, borderColor: C.LIGHT, borderWidth: 0.7 });
+  k.text("Cachet et signature", M + 10, sigY - 14, { size: 8.5, bold: true, color: C.GOLD });
+  k.text("Bon pour accord", M + 10, sigY - 28, { size: 8, color: C.GREY });
+  if (k.stampImg) {
+    const sw = 80, sh = (k.stampImg.height / k.stampImg.width) * sw;
+    try { k.page.drawImage(k.stampImg, { x: M + 14, y: sigY - sigH + 8, width: sw, height: Math.min(sh, sigH - 36) }); } catch { /* ignore */ }
   }
+  k.y = boxTop - 60;
 
-  // Pied : mentions légales + conditions
-  let fy = M + 40;
-  for (const ln of legalLines(c)) { text(ln, M, fy, { size: 7, color: GREY }); fy -= 9; }
-  if (c?.paymentTerms) for (const ln of wrap(c.paymentTerms, font, 7, W - 2 * M)) { text(ln, M, fy, { size: 7, color: GREY }); fy -= 9; }
+  // ── Conditions de paiement + coordonnées bancaires ──
+  k.ensure(60);
+  k.y -= 6;
+  if (c?.paymentTerms) {
+    k.text("Modalités de paiement", M, k.y, { size: 8, bold: true, color: C.NAVY }); k.y -= 12;
+    for (const ln of k.wrap(c.paymentTerms, 8, false, W - 2 * M)) { k.text(ln, M, k.y, { size: 8, color: C.GREY }); k.y -= 11; }
+  }
+  const bank = [c?.bankName && `Banque : ${c.bankName}`, c?.rib && `RIB : ${c.rib}`, c?.iban && `IBAN : ${c.iban}`, c?.swift && `SWIFT : ${c.swift}`].filter(Boolean).join("   ·   ");
+  if (bank) { k.y -= 2; k.text("Coordonnées bancaires", M, k.y, { size: 8, bold: true, color: C.NAVY }); k.y -= 12; k.text(bank, M, k.y, { size: 8, color: C.GREY }); }
 
-  downloadBlob(new Blob([(await doc.save()) as BlobPart], { type: "application/pdf" }), `${d.quoteNumber || "devis"}.pdf`);
+  await k.finish(`${d.quoteNumber || "devis"}.pdf`);
 }
 
 // ── Excel (exceljs) ───────────────────────────────────────────────

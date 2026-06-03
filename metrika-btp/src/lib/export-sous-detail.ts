@@ -1,6 +1,7 @@
 "use client";
 
-import { CompanyExport, downloadBlob, fmtMad, dataUrlToBytes, winAnsiSafe } from "@/lib/export-common";
+import { CompanyExport, downloadBlob, fmtMad, dataUrlToBytes } from "@/lib/export-common";
+import { createPdf } from "@/lib/pdf-kit";
 
 export interface SousDetailExport {
   designation: string;
@@ -58,64 +59,66 @@ export async function exportSousDetailExcel(d: SousDetailExport): Promise<void> 
   downloadBlob(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "sous-detail-metrika.xlsx");
 }
 
-// ── PDF ───────────────────────────────────────────────────────────
+// ── PDF officiel (kit Metrika) ────────────────────────────────────
 export async function exportSousDetailPdf(d: SousDetailExport): Promise<void> {
-  const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
-  const NAVY = rgb(0.078, 0.137, 0.247), GOLD = rgb(0.882, 0.647, 0.196), GREY = rgb(0.45, 0.47, 0.52), LINE = rgb(0.85, 0.86, 0.88);
-  const doc = await PDFDocument.create();
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const W = 595.28, H = 841.89, M = 48;
-  let page = doc.addPage([W, H]); let y = H - M;
-  const t = (s: string, x: number, yy: number, o?: { size?: number; bold?: boolean; color?: ReturnType<typeof rgb>; align?: "right" }) => {
-    const ss = winAnsiSafe(s);
-    const size = o?.size ?? 9; const f = o?.bold ? bold : font;
-    const xx = o?.align === "right" ? x - f.widthOfTextAtSize(ss, size) : x;
-    page.drawText(ss, { x: xx, y: yy, size, font: f, color: o?.color ?? NAVY });
-  };
-  page.drawRectangle({ x: 0, y: H - 5, width: W, height: 5, color: GOLD });
-  const logo = dataUrlToBytes(d.company?.logoUrl);
-  if (logo) {
-    try {
-      const img = logo.mime.includes("png") ? await doc.embedPng(logo.bytes) : await doc.embedJpg(logo.bytes);
-      const lw = 110; const lh = (img.height / img.width) * lw;
-      page.drawImage(img, { x: M, y: y - lh, width: lw, height: lh }); y -= lh + 6;
-    } catch { /* ignore */ }
-  } else { t(d.company?.name ?? "Metrika Métrage BTP", M, y - 6, { size: 11, bold: true }); y -= 22; }
-  t(`Sous-détail de prix — ${d.designation}`, M, y, { size: 13, bold: true }); y -= 16;
-  t(`Unité : ${d.unit}   ·   Rendement : ${d.yield} U/j`, M, y, { size: 9, color: GREY }); y -= 20;
+  const k = await createPdf(d.company);
+  const { C, W, M } = k;
+  k.header({ title: "SOUS-DÉTAIL", subtitle: "de prix unitaire" });
 
-  const cQ = W - M - 200, cC = W - M - 110, cA = W - M;
+  // ── Bloc ouvrage ──
+  k.page.drawRectangle({ x: M, y: k.y - 44, width: W - 2 * M, height: 48, color: C.ZEBRA, borderColor: C.LIGHT, borderWidth: 0.5 });
+  k.text("OUVRAGE", M + 10, k.y - 12, { size: 8, bold: true, color: C.GOLD });
+  let oy = k.y - 26;
+  for (const ln of k.wrap(d.designation, 11, true, W - 2 * M - 20)) { k.text(ln, M + 10, oy, { size: 11, bold: true }); oy -= 13; }
+  k.text(`Unité : ${d.unit}      ·      Rendement : ${d.yield} U/jour${d.lot ? `      ·      Lot : ${d.lot}` : ""}`, M + 10, oy, { size: 8.5, color: C.GREY });
+  k.y -= 60;
+
+  // ── Tableau par poste ──
+  const amtR = W - M - 8, costR = W - M - 95, qtyR = W - M - 170, uX = W - M - 220, posteX = M + 10;
+  const posteW = uX - posteX - 8;
   const head = () => {
-    page.drawRectangle({ x: M, y: y - 15, width: W - 2 * M, height: 19, color: NAVY });
-    t("POSTE", M + 8, y - 10, { size: 7.5, bold: true, color: rgb(1, 1, 1) });
-    t("QTÉ/U", cQ, y - 10, { size: 7.5, bold: true, color: rgb(1, 1, 1), align: "right" });
-    t("COÛT U.", cC, y - 10, { size: 7.5, bold: true, color: rgb(1, 1, 1), align: "right" });
-    t("MONTANT", cA, y - 10, { size: 7.5, bold: true, color: rgb(1, 1, 1), align: "right" });
-    y -= 24;
+    k.page.drawRectangle({ x: M, y: k.y - 16, width: W - 2 * M, height: 20, color: C.NAVY });
+    k.text("POSTE", posteX, k.y - 11, { size: 8, bold: true, color: C.WHITE });
+    k.text("UNITÉ", uX, k.y - 11, { size: 8, bold: true, color: C.WHITE });
+    k.text("QTÉ / U", qtyR, k.y - 11, { size: 8, bold: true, color: C.WHITE, align: "right" });
+    k.text("COÛT U.", costR, k.y - 11, { size: 8, bold: true, color: C.WHITE, align: "right" });
+    k.text("MONTANT", amtR, k.y - 11, { size: 8, bold: true, color: C.WHITE, align: "right" });
+    k.y -= 24;
   };
   head();
   let currentType = "";
   for (const c of d.components) {
     if (c.type !== currentType) {
       currentType = c.type;
-      if (y < M + 60) { page = doc.addPage([W, H]); y = H - M; head(); }
-      t(TYPE_LABEL[c.type] ?? c.type, M, y, { size: 8, bold: true, color: GOLD }); y -= 14;
+      if (k.ensure(34)) head();
+      k.y -= 2;
+      k.page.drawRectangle({ x: M, y: k.y - 13, width: W - 2 * M, height: 16, color: C.GOLD });
+      k.text((TYPE_LABEL[c.type] ?? c.type).toUpperCase(), posteX, k.y - 9, { size: 8, bold: true, color: C.NAVY });
+      k.y -= 20;
     }
-    if (y < M + 40) { page = doc.addPage([W, H]); y = H - M; head(); }
-    t(c.designation, M + 8, y, { size: 8.5 });
-    t(String(c.quantity), cQ, y, { size: 8.5, align: "right" });
-    t(fmtMad(c.unitCost), cC, y, { size: 8.5, align: "right" });
-    t(fmtMad(c.quantity * c.unitCost), cA, y, { size: 8.5, bold: true, align: "right" });
-    y -= 13;
-    page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.4, color: LINE });
+    const wl = k.wrap(c.designation, 8.5, false, posteW);
+    const rowH = wl.length * 11 + 5;
+    if (k.ensure(rowH + 4)) head();
+    wl.forEach((ln, i) => k.text(ln, posteX, k.y - i * 11, { size: 8.5 }));
+    k.text(c.unit, uX, k.y, { size: 8, color: C.GREY });
+    k.text(String(c.quantity), qtyR, k.y, { size: 8.5, align: "right" });
+    k.text(fmtMad(c.unitCost), costR, k.y, { size: 8.5, align: "right" });
+    k.text(fmtMad(c.quantity * c.unitCost), amtR, k.y, { size: 8.5, bold: true, align: "right" });
+    k.y -= rowH;
+    k.hr(k.y + 4, C.LIGHT, 0.4);
   }
-  const { debourse, selling } = compute(d);
-  y -= 12;
-  t("Déboursé sec", cC, y, { size: 9, color: GREY, align: "right" }); t(fmtMad(debourse), cA, y, { size: 9, align: "right" }); y -= 13;
-  t(`Frais généraux ${Math.round(d.generalFeesRate * 100)}% · Bénéfice ${Math.round(d.profitRate * 100)}%`, cC, y, { size: 8, color: GREY, align: "right" }); y -= 8;
-  page.drawLine({ start: { x: cC - 60, y }, end: { x: cA, y }, thickness: 0.6, color: NAVY }); y -= 16;
-  t(`Prix de vente / ${d.unit}`, cC, y, { size: 11, bold: true, align: "right" }); t(fmtMad(selling) + " MAD", cA, y, { size: 11, bold: true, color: GOLD, align: "right" });
 
-  downloadBlob(new Blob([(await doc.save()) as BlobPart], { type: "application/pdf" }), "sous-detail-metrika.pdf");
+  // ── Synthèse ──
+  const { debourse, selling } = compute(d);
+  k.ensure(110);
+  k.y -= 10;
+  const boxW = 250, boxX = W - M - boxW;
+  k.text("Déboursé sec", boxX + 12, k.y, { size: 9, color: C.GREY }); k.text(fmtMad(debourse) + " MAD", amtR, k.y, { size: 9, bold: true, align: "right" }); k.y -= 15;
+  k.text(`Frais généraux : ${Math.round(d.generalFeesRate * 100)} %`, boxX + 12, k.y, { size: 8.5, color: C.GREY }); k.y -= 13;
+  k.text(`Bénéfice : ${Math.round(d.profitRate * 100)} %`, boxX + 12, k.y, { size: 8.5, color: C.GREY }); k.y -= 10;
+  k.page.drawRectangle({ x: boxX, y: k.y - 24, width: boxW, height: 26, color: C.NAVY });
+  k.text(`PRIX DE VENTE / ${d.unit}`, boxX + 12, k.y - 16, { size: 10, bold: true, color: C.WHITE });
+  k.text(fmtMad(selling) + " MAD", amtR, k.y - 16, { size: 12, bold: true, color: C.GOLD, align: "right" });
+
+  await k.finish("sous-detail-metrika.pdf");
 }
