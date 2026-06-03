@@ -54,6 +54,26 @@ export default function DevisPage() {
   const totalTTC = totalHT + totalVAT;
   const canValidate = clientName.trim() !== "" && lines.some((l) => l.designation.trim() && l.unitPrice > 0);
 
+  async function exportPdf() {
+    try {
+      const { downloadDevisPdf } = await import("@/lib/devis-pdf");
+      await downloadDevisPdf({
+        quoteNumber,
+        dateLabel: formatDate(today),
+        validity,
+        vatRate: VAT_RATE,
+        clientName,
+        clientAddress,
+        projectName,
+        companyName: "Metrika Métrage BTP",
+        lines,
+      });
+      toast.success("Devis PDF téléchargé.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export PDF impossible");
+    }
+  }
+
   return (
     <div className="animate-fade-up">
       <PageHeader
@@ -141,7 +161,7 @@ export default function DevisPage() {
             </Button>
             <Button variant="outline" disabled={!validated} onClick={() => toast.info("Export Excel — branché sur le service ExcelJS.")}><FileDown className="size-4" /> Excel</Button>
             <Button variant="outline" disabled={!validated} onClick={() => toast.info("Export DOCX.")}><FileDown className="size-4" /> DOCX</Button>
-            <Button variant="gold" disabled={!validated} onClick={() => toast.info("Export PDF haut de gamme.")}><FileDown className="size-4" /> PDF</Button>
+            <Button variant="gold" disabled={!validated} onClick={exportPdf}><FileDown className="size-4" /> PDF</Button>
           </div>
         </div>
 

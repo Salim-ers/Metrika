@@ -8,8 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { formatMAD } from "@/lib/utils";
-import { Loader2, Table2, CheckCircle2, FileDown, Sparkles } from "lucide-react";
+import { formatMAD, cn } from "@/lib/utils";
+import { Loader2, Table2, CheckCircle2, FileDown, Sparkles, Upload } from "lucide-react";
+
+const ACCEPTED_DOCS = ".pdf,.docx,.xlsx,.xls,.txt,.csv,.md";
 
 interface Line {
   lot: string; code?: string; designation: string; description?: string;
@@ -21,6 +23,26 @@ export default function DpgfPage() {
   const [planNotes, setPlanNotes] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [busy, setBusy] = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  async function importFile(file: File | undefined) {
+    if (!file) return;
+    setImporting(true);
+    try {
+      const { extractText } = await import("@/lib/extract-text");
+      const text = await extractText(file);
+      if (!text) {
+        toast.error("Aucun texte détecté (PDF scanné ?). Copiez-collez le contenu à la place.");
+        return;
+      }
+      setCctpText((prev) => (prev.trim() ? prev + "\n\n" + text : text));
+      toast.success(`« ${file.name} » importé.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Import impossible");
+    } finally {
+      setImporting(false);
+    }
+  }
 
   async function convert() {
     if (!cctpText.trim()) { toast.error("Collez d’abord un texte CCTP."); return; }
@@ -60,8 +82,23 @@ export default function DpgfPage() {
           <CardHeader><CardTitle className="text-navy-900">Source</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Texte du CCTP</Label>
-              <Textarea value={cctpText} onChange={(e) => setCctpText(e.target.value)} className="min-h-[220px]" placeholder="Collez ici le contenu du CCTP à décomposer…" />
+              <div className="flex items-center justify-between">
+                <Label>Texte du CCTP</Label>
+                <label className={cn(
+                  "inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input px-2.5 py-1 text-xs font-medium text-navy-700 transition-colors hover:border-gold-400 hover:bg-gold-50/40",
+                  importing && "pointer-events-none opacity-60"
+                )}>
+                  {importing ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
+                  {importing ? "Import…" : "Importer (PDF, Word, Excel)"}
+                  <input
+                    type="file"
+                    accept={ACCEPTED_DOCS}
+                    hidden
+                    onChange={(e) => { importFile(e.target.files?.[0]); e.currentTarget.value = ""; }}
+                  />
+                </label>
+              </div>
+              <Textarea value={cctpText} onChange={(e) => setCctpText(e.target.value)} className="min-h-[220px]" placeholder="Collez ici le contenu du CCTP à décomposer, ou importez un fichier ci-dessus…" />
             </div>
             <div className="space-y-2">
               <Label>Dimensions / plans (optionnel)</Label>

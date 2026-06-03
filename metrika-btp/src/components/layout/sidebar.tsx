@@ -9,6 +9,13 @@ import { cn } from "@/lib/utils";
 export function Sidebar() {
   const pathname = usePathname();
 
+  // Lien actif = la correspondance la PLUS spécifique (le plus long préfixe),
+  // pour éviter qu'un parent comme /agents s'allume sur /agents/sous-detail.
+  const allHrefs = NAV.flatMap((s) => s.items.map((i) => i.href));
+  const bestMatch = allHrefs
+    .filter((h) => pathname === h || pathname.startsWith(h + "/"))
+    .sort((a, b) => b.length - a.length)[0];
+
   return (
     <aside className="hidden w-[264px] shrink-0 flex-col bg-sidebar text-sidebar-foreground lg:flex">
       <div className="flex h-[72px] items-center border-b border-sidebar-border px-6">
@@ -23,9 +30,7 @@ export function Sidebar() {
             </p>
             <ul className="space-y-1">
               {section.items.map((item) => {
-                const active =
-                  pathname === item.href ||
-                  (item.href !== "/dashboard" && pathname.startsWith(item.href));
+                const active = item.href === bestMatch;
                 const Icon = item.icon;
                 return (
                   <li key={item.href}>
