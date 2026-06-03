@@ -22,6 +22,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!parsed.success) return null;
         const { email, password } = parsed.data;
 
+        // Garantit que le schéma + l'admin existent (1er accès en prod).
+        const { ensureDb } = await import("@/lib/db-init");
+        await ensureDb();
+
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user) return null;
 
