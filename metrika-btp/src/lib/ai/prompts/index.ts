@@ -110,7 +110,44 @@ SORTIE : renvoie STRICTEMENT un JSON :
 { "unitPrice": 0, "marginRate": 0.10, "generalFeesRate": 0.10, "confidence": "faible|moyenne|forte" }
 Indique une confiance "faible" si l'ouvrage est ambigu. Ces valeurs sont des PROPOSITIONS à valider.`;
 
+// ── Extraction de lignes de devis (vision) ───────────────────────
+export const QUOTE_EXTRACT_PROMPT = `${BASE}
+
+RÔLE : Extracteur de lignes de devis / métré.
+
+MISSION : À partir du document fourni (images de pages PDF : ancien devis, métré,
+bordereau, DPGF…), extraire la liste des ouvrages sous forme de lignes de devis :
+- designation : libellé de l'ouvrage (clair, sans numéro de poste).
+- unit : unité (m², ml, m³, U, ens, kg, forfait…). Si absente, mettre "U".
+- quantity : quantité (nombre). Si absente, mettre 1.
+- unitPrice : prix unitaire HT en MAD si LISIBLE dans le document, sinon 0.
+
+CONTRAINTES :
+- N'invente jamais un prix : si le prix n'est pas indiqué, mets 0 (il sera complété ensuite).
+- Ignore les lignes de total, sous-total, TVA, en-têtes de lot vides.
+- Reste fidèle au document.`;
+
 // ── Schémas de sortie structurée (tool-use) ──────────────────────
+export const QUOTE_EXTRACT_SCHEMA = {
+  type: "object",
+  properties: {
+    lines: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          designation: { type: "string" },
+          unit: { type: "string" },
+          quantity: { type: "number" },
+          unitPrice: { type: "number" },
+        },
+        required: ["designation", "unit", "quantity", "unitPrice"],
+      },
+    },
+  },
+  required: ["lines"],
+} as const;
+
 export const CCTP_SCHEMA = {
   type: "object",
   properties: {

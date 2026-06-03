@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { MetrikaLogo } from "@/components/layout/metrika-logo";
 import { formatMAD, formatDate, buildQuoteNumber } from "@/lib/utils";
 import { UNITS } from "@/lib/constants";
-import { Plus, Trash2, FileDown, CheckCircle2, ReceiptText, Library } from "lucide-react";
+import { Plus, Trash2, FileDown, CheckCircle2, ReceiptText, Library, Upload, Loader2 } from "lucide-react";
 
 interface Line {
   designation: string;
@@ -55,6 +55,34 @@ export default function DevisPage() {
     const p = prices.find((x) => x.id === priceId);
     if (!p) return;
     update(i, { designation: p.designation, unit: p.unit, unitPrice: p.sellingPrice });
+  }
+
+  const [importing, setImporting] = useState(false);
+  async function importPdf(file: File | undefined) {
+    if (!file) return;
+    setImporting(true);
+    try {
+      const { rasterizePdf } = await import("@/lib/pdf-render");
+      const images = await rasterizePdf(file);
+      const totalChars = images.reduce((n, im) => n + im.data.length, 0);
+      if (totalChars > 3_800_000) { toast.error("PDF trop volumineux. Réduisez le nombre de pages."); return; }
+      const res = await fetch("/api/devis/extract", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ images }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      const extracted: Line[] = (data.lines ?? []).map((l: Line) => ({
+        designation: l.designation, unit: l.unit || "U", quantity: l.quantity || 1, unitPrice: l.unitPrice || 0,
+      }));
+      if (extracted.length === 0) { toast.error("Aucune ligne détectée dans le PDF."); return; }
+      setLines((prev) => [...prev.filter((l) => l.designation.trim()), ...extracted]);
+      setValidated(false);
+      toast.success(`${extracted.length} ligne(s) importée(s). Vérifiez et complétez les prix.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Import impossible");
+    } finally {
+      setImporting(false);
+    }
   }
 
   const quoteNumber = buildQuoteNumber("DEV", 1);
@@ -138,7 +166,13 @@ export default function DevisPage() {
           <Card>
             <CardHeader className="flex-row items-center justify-between">
               <CardTitle className="text-navy-900">Lignes du devis</CardTitle>
-              <Button variant="outline" size="sm" onClick={addLine}><Plus className="size-4" /> Ligne</Button>
+              <div className="flex gap-2">
+                <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input px-2.5 py-1.5 text-sm font-medium hover:border-gold-400 ${importing ? "pointer-events-none opacity-60" : ""}`}>
+                  {importing ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />} Importer un PDF
+                  <input type="file" accept="application/pdf" hidden onChange={(e) => { importPdf(e.target.files?.[0]); e.currentTarget.value = ""; }} />
+                </label>
+                <Button variant="outline" size="sm" onClick={addLine}><Plus className="size-4" /> Ligne</Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
               {lines.map((l, i) => (
