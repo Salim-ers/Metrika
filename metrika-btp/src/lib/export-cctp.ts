@@ -67,9 +67,9 @@ export async function exportCctpPdf(sections: CctpSection[], company?: CompanyEx
     ensure(30);
     y -= 8;
     page.drawRectangle({ x: M, y: y - 4, width: W - 2 * M, height: 22, color: NAVY });
-    page.drawText(sec.lot, { x: M + 8, y: y + 2, size: 12, font: bold, color: rgb(1, 1, 1) });
+    page.drawText(sec.lot ?? "Lot", { x: M + 8, y: y + 2, size: 12, font: bold, color: rgb(1, 1, 1) });
     y -= 30;
-    for (const raw of sec.content.split("\n")) {
+    for (const raw of (sec.content ?? "").split("\n")) {
       const { kind, text } = classify(raw);
       if (kind === "blank") { y -= 4; continue; }
       if (kind === "h2") { y -= 4; para(text, bold, 11, NAVY, 0, 5); }
@@ -89,8 +89,8 @@ export async function exportCctpDocx(sections: CctpSection[]) {
     new Paragraph({ children: [new TextRun({ text: "Metrika Métrage BTP", color: "888888" })] }),
   ];
   for (const sec of sections) {
-    children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, spacing: { before: 240 }, children: [new TextRun(sec.lot)] }));
-    for (const raw of sec.content.split("\n")) {
+    children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, spacing: { before: 240 }, children: [new TextRun(sec.lot ?? "Lot")] }));
+    for (const raw of (sec.content ?? "").split("\n")) {
       const { kind, text } = classify(raw);
       if (kind === "blank") continue;
       if (kind === "h2") children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun(text)] }));

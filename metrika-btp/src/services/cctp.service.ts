@@ -37,7 +37,9 @@ ${params.planContext ? `\nSynthèse des plans du projet (à utiliser pour adapte
 
 Rédige la section CCTP de ce lot.`;
 
-  return runClaude<CctpSectionResult>({ system: CCTP_PROMPT, user, schema: CCTP_SCHEMA, maxTokens: 6000 });
+  const res = await runClaude<CctpSectionResult>({ system: CCTP_PROMPT, user, schema: CCTP_SCHEMA, maxTokens: 16000 });
+  // Garde-fou : si le modèle a renvoyé un objet sans contenu, on évite un export vide.
+  return { lot: res.lot || params.lot, content: res.content ?? "" };
 }
 
 export async function generateCctp(params: {

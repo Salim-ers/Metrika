@@ -212,7 +212,7 @@ export default function CctpPage() {
                   </CardHeader>
                   <CardContent>
                     <Textarea
-                      value={s.content}
+                      value={s.content ?? ""}
                       onChange={(e) => setSections((arr) => arr.map((x, j) => j === i ? { ...x, content: e.target.value, validated: false } : x))}
                       className="min-h-[220px] font-mono text-xs leading-relaxed"
                     />
