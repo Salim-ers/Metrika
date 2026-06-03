@@ -114,28 +114,41 @@ export default function PdfAgentPage() {
     }
   }
 
-  async function run(endpoint: string, files: PickedFile[], extra?: Record<string, string>) {
-    if (files.length === 0) { toast.error("Ajoutez au moins un fichier."); return; }
+  // Conversion images → PDF côté navigateur : décodage + ré-encodage JPEG via
+  // canvas (respecte l'orientation EXIF), puis assemblage pdf-lib. Aucune limite serveur.
+  async function imagesToPdfLocally(files: PickedFile[]) {
+    if (files.length === 0) { toast.error("Ajoutez au moins une image."); return; }
     setBusy(true);
     try {
-      const fd = new FormData();
-      files.forEach((f) => fd.append("files", f.file));
-      fd.append("order", JSON.stringify(files.map((_, i) => i)));
-      Object.entries(extra ?? {}).forEach(([k, v]) => fd.append(k, v));
-
-      const res = await fetch(endpoint, { method: "POST", body: fd });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Échec du traitement");
-
-      const blob = await res.blob();
+      const { PDFDocument } = await import("pdf-lib");
+      const doc = await PDFDocument.create();
+      for (const { file } of files) {
+        const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" }).catch(() => null);
+        if (!bitmap) throw new Error(`Image illisible : ${file.name}`);
+        const canvas = document.createElement("canvas");
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Canvas indisponible");
+        ctx.drawImage(bitmap, 0, 0);
+        bitmap.close?.();
+        const jpgBlob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", 0.9));
+        if (!jpgBlob) throw new Error(`Conversion impossible : ${file.name}`);
+        const embedded = await doc.embedJpg(new Uint8Array(await jpgBlob.arrayBuffer()));
+        const page = doc.addPage([canvas.width, canvas.height]);
+        page.drawImage(embedded, { x: 0, y: 0, width: canvas.width, height: canvas.height });
+      }
+      const data = await doc.save();
+      const blob = new Blob([data as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = res.headers.get("Content-Disposition")?.match(/filename="(.+)"/)?.[1] ?? "metrika.pdf";
+      a.download = "metrika-images.pdf";
       a.click();
       URL.revokeObjectURL(url);
-      toast.success("PDF généré et téléchargé.");
+      toast.success(`${files.length} image(s) converties en PDF.`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erreur inattendue");
+      toast.error(e instanceof Error ? e.message : "Erreur pendant la conversion");
     } finally {
       setBusy(false);
     }
@@ -184,7 +197,7 @@ export default function PdfAgentPage() {
               <div className="flex items-center justify-end">
                 <Badge variant="muted">{imgFiles.length} image(s)</Badge>
               </div>
-              <Button variant="gold" size="lg" disabled={busy} onClick={() => run("/api/pdf/images-to-pdf", imgFiles)}>
+              <Button variant="gold" size="lg" disabled={busy} onClick={() => imagesToPdfLocally(imgFiles)}>
                 {busy ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
                 Convertir en PDF
               </Button>

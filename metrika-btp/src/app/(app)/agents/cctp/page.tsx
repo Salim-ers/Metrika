@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { LOTS_BTP, PROJECT_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { Loader2, FileText, ShieldCheck, FileDown, Sparkles } from "lucide-react";
+import { Loader2, FileText, ShieldCheck, FileDown, Sparkles, Upload, X, ScanText } from "lucide-react";
 
 interface Section { lot: string; content: string; validated?: boolean }
 
@@ -19,7 +19,10 @@ export default function CctpPage() {
   const [projectType, setProjectType] = useState<string>(PROJECT_TYPES[0]);
   const [context, setContext] = useState("");
   const [sections, setSections] = useState<Section[]>([]);
+  const [planFiles, setPlanFiles] = useState<File[]>([]);
+  const [planContext, setPlanContext] = useState("");
   const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState("");
 
   function toggle(lot: string) {
     setSelected((s) => (s.includes(lot) ? s.filter((l) => l !== lot) : [...s, lot]));
@@ -29,19 +32,35 @@ export default function CctpPage() {
     if (selected.length === 0) { toast.error("Sélectionnez au moins un lot."); return; }
     setBusy(true);
     try {
+      // Rastérisation des plans PDF côté navigateur (images légères pour Claude).
+      const planImages: { data: string; mediaType: string }[] = [];
+      if (planFiles.length > 0) {
+        setPhase("Lecture des plans…");
+        const { rasterizePdf } = await import("@/lib/pdf-render");
+        for (const f of planFiles) planImages.push(...(await rasterizePdf(f)));
+        const totalChars = planImages.reduce((n, im) => n + im.data.length, 0);
+        if (totalChars > 3_800_000) {
+          toast.error("Plans trop volumineux. Réduisez le nombre de pages/plans à envoyer.");
+          setBusy(false); setPhase(""); return;
+        }
+      }
+
+      setPhase(planImages.length ? "Analyse des plans + génération…" : "Génération…");
       const res = await fetch("/api/cctp/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lots: selected, projectType, context }),
+        body: JSON.stringify({ lots: selected, projectType, context, planImages }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setSections(data.sections.map((s: Section) => ({ ...s, validated: false })));
+      setPlanContext(data.planContext ?? "");
       toast.success(`${data.sections.length} section(s) générée(s). Vérifiez puis validez.`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erreur");
     } finally {
       setBusy(false);
+      setPhase("");
     }
   }
 
@@ -93,13 +112,46 @@ export default function CctpPage() {
             </div>
 
             <div className="space-y-2">
+              <Label>Plans du projet (PDF, optionnel)</Label>
+              <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30 py-5 text-center transition-colors hover:border-gold-400 hover:bg-gold-50/40">
+                <Upload className="size-4 text-navy-600" />
+                <span className="mt-1 text-xs font-medium text-navy-800">Ajouter des plans PDF</span>
+                <span className="text-[11px] text-muted-foreground">Claude lit les plans pour adapter le CCTP</span>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    const list = Array.from(e.target.files ?? []);
+                    setPlanFiles((p) => [...p, ...list]);
+                    e.currentTarget.value = "";
+                  }}
+                />
+              </label>
+              {planFiles.length > 0 && (
+                <ul className="space-y-1.5">
+                  {planFiles.map((f, i) => (
+                    <li key={i} className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs">
+                      <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="flex-1 truncate text-navy-800">{f.name}</span>
+                      <button onClick={() => setPlanFiles((p) => p.filter((_, j) => j !== i))} className="text-destructive hover:opacity-70">
+                        <X className="size-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="space-y-2">
               <Label>Exigences particulières (optionnel)</Label>
               <Textarea value={context} onChange={(e) => setContext(e.target.value)} placeholder="Contraintes du projet, normes spécifiques, niveau de finition…" />
             </div>
 
             <Button variant="gold" size="lg" className="w-full" disabled={busy} onClick={generate}>
               {busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-              {busy ? "Génération en cours…" : "Générer le CCTP"}
+              {busy ? (phase || "Génération en cours…") : "Générer le CCTP"}
             </Button>
           </CardContent>
         </Card>
@@ -115,6 +167,17 @@ export default function CctpPage() {
             </Card>
           ) : (
             <>
+              {planContext && (
+                <Card className="border-navy-100 bg-navy-50/40">
+                  <CardHeader className="flex-row items-center gap-2">
+                    <ScanText className="size-4 text-navy-600" />
+                    <CardTitle className="text-sm text-navy-900">Synthèse des plans (lue par l’IA)</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <pre className="max-h-56 overflow-auto whitespace-pre-wrap font-sans text-xs leading-relaxed text-navy-700">{planContext}</pre>
+                  </CardContent>
+                </Card>
+              )}
               {sections.map((s, i) => (
                 <Card key={i}>
                   <CardHeader className="flex-row items-center justify-between">

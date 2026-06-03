@@ -8,6 +8,8 @@ export const anthropic = new Anthropic({ apiKey });
 interface RunOptions {
   system: string;
   user: string;
+  /** Images jointes (ex: plans rastérisés) analysées visuellement par Claude. */
+  images?: { data: string; mediaType: string }[];
   maxTokens?: number;
   /** Si vrai, on tente de parser la réponse comme JSON. */
   json?: boolean;
@@ -20,6 +22,7 @@ interface RunOptions {
 export async function runClaude<T = string>({
   system,
   user,
+  images,
   maxTokens = 8000,
   json = false,
 }: RunOptions): Promise<T> {
@@ -29,11 +32,28 @@ export async function runClaude<T = string>({
     );
   }
 
+  const content: Anthropic.MessageParam["content"] =
+    images && images.length
+      ? [
+          ...images.map(
+            (im): Anthropic.ImageBlockParam => ({
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: im.mediaType as "image/jpeg" | "image/png" | "image/webp" | "image/gif",
+                data: im.data,
+              },
+            })
+          ),
+          { type: "text", text: user },
+        ]
+      : user;
+
   const res = await anthropic.messages.create({
     model: MODEL,
     max_tokens: maxTokens,
     system,
-    messages: [{ role: "user", content: user }],
+    messages: [{ role: "user", content }],
   });
 
   const text = res.content
