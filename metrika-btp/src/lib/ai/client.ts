@@ -11,8 +11,14 @@ interface RunOptions {
   /** Images jointes (ex: plans rastérisés) analysées visuellement par Claude. */
   images?: { data: string; mediaType: string }[];
   maxTokens?: number;
-  /** Si vrai, on tente de parser la réponse comme JSON. */
+  /** Si vrai, on tente de parser la réponse comme JSON (texte libre). */
   json?: boolean;
+  /**
+   * Schéma JSON de sortie. S'il est fourni, on force une sortie STRUCTURÉE
+   * via tool-use : Claude renvoie un objet JSON valide garanti (évite les
+   * échecs de parsing dus aux retours à la ligne dans les chaînes).
+   */
+  schema?: Record<string, unknown>;
 }
 
 /**
@@ -25,6 +31,7 @@ export async function runClaude<T = string>({
   images,
   maxTokens = 8000,
   json = false,
+  schema,
 }: RunOptions): Promise<T> {
   if (!apiKey) {
     throw new Error(
@@ -49,6 +56,27 @@ export async function runClaude<T = string>({
         ]
       : user;
 
+  // ── Sortie structurée garantie (tool-use) ──
+  if (schema) {
+    const res = await anthropic.messages.create({
+      model: MODEL,
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: "user", content }],
+      tools: [
+        {
+          name: "resultat",
+          description: "Renvoie le résultat au format structuré demandé.",
+          input_schema: schema as Anthropic.Tool.InputSchema,
+        },
+      ],
+      tool_choice: { type: "tool", name: "resultat" },
+    });
+    const tool = res.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
+    if (!tool) throw new Error("L'IA n'a pas renvoyé de sortie structurée.");
+    return tool.input as T;
+  }
+
   const res = await anthropic.messages.create({
     model: MODEL,
     max_tokens: maxTokens,
@@ -64,7 +92,6 @@ export async function runClaude<T = string>({
 
   if (!json) return text as T;
 
-  // Nettoyage des éventuelles balises ```json
   const cleaned = text.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   try {
     return JSON.parse(cleaned) as T;

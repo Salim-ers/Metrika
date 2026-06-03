@@ -1,5 +1,5 @@
 import { runClaude } from "@/lib/ai/client";
-import { SOUS_DETAIL_PROMPT } from "@/lib/ai/prompts";
+import { SOUS_DETAIL_PROMPT, SOUS_DETAIL_SCHEMA } from "@/lib/ai/prompts";
 import type { SousDetailComponentInput } from "@/types";
 
 interface SousDetailResult {
@@ -11,18 +11,23 @@ interface SousDetailResult {
   components: SousDetailComponentInput[];
 }
 
+export interface PlanImage { data: string; mediaType: string }
+
 export async function generateSousDetail(params: {
   designation: string;
   unit: string;
   lot?: string;
+  images?: PlanImage[];
 }): Promise<SousDetailResult> {
-  const user = `Ouvrage : ${params.designation}
+  const hasImages = !!params.images?.length;
+  const user = `Ouvrage : ${params.designation || "(voir document joint)"}
 Unité : ${params.unit}
 Lot : ${params.lot ?? "non précisé"}
+${hasImages ? "Un document (images de pages PDF) décrit l'ouvrage : lis-le pour préciser la décomposition." : ""}
 
 Établis le sous-détail de prix.`;
   return runClaude<SousDetailResult>({
-    system: SOUS_DETAIL_PROMPT, user, json: true, maxTokens: 3000,
+    system: SOUS_DETAIL_PROMPT, user, images: params.images, schema: SOUS_DETAIL_SCHEMA, maxTokens: 3000,
   });
 }
 

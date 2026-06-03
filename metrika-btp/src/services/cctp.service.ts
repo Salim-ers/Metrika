@@ -1,5 +1,5 @@
 import { runClaude } from "@/lib/ai/client";
-import { CCTP_PROMPT, PLAN_ANALYSIS_PROMPT } from "@/lib/ai/prompts";
+import { CCTP_PROMPT, CCTP_SCHEMA, PLAN_ANALYSIS_PROMPT } from "@/lib/ai/prompts";
 
 interface CctpSectionResult { lot: string; content: string }
 
@@ -37,7 +37,7 @@ ${params.planContext ? `\nSynthèse des plans du projet (à utiliser pour adapte
 
 Rédige la section CCTP de ce lot.`;
 
-  return runClaude<CctpSectionResult>({ system: CCTP_PROMPT, user, json: true, maxTokens: 6000 });
+  return runClaude<CctpSectionResult>({ system: CCTP_PROMPT, user, schema: CCTP_SCHEMA, maxTokens: 6000 });
 }
 
 export async function generateCctp(params: {

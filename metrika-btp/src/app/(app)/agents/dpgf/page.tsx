@@ -8,10 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { formatMAD, cn } from "@/lib/utils";
-import { Loader2, Table2, CheckCircle2, FileDown, Sparkles, Upload } from "lucide-react";
-
-const ACCEPTED_DOCS = ".pdf,.docx,.xlsx,.xls,.txt,.csv,.md";
+import { formatMAD } from "@/lib/utils";
+import { Loader2, Table2, CheckCircle2, FileDown, Sparkles, Upload, FileText, X } from "lucide-react";
 
 interface Line {
   lot: string; code?: string; designation: string; description?: string;
@@ -21,36 +19,35 @@ interface Line {
 export default function DpgfPage() {
   const [cctpText, setCctpText] = useState("");
   const [planNotes, setPlanNotes] = useState("");
+  const [cctpFiles, setCctpFiles] = useState<File[]>([]);
   const [lines, setLines] = useState<Line[]>([]);
   const [busy, setBusy] = useState(false);
-  const [importing, setImporting] = useState(false);
-
-  async function importFile(file: File | undefined) {
-    if (!file) return;
-    setImporting(true);
-    try {
-      const { extractText } = await import("@/lib/extract-text");
-      const text = await extractText(file);
-      if (!text) {
-        toast.error("Aucun texte détecté (PDF scanné ?). Copiez-collez le contenu à la place.");
-        return;
-      }
-      setCctpText((prev) => (prev.trim() ? prev + "\n\n" + text : text));
-      toast.success(`« ${file.name} » importé.`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Import impossible");
-    } finally {
-      setImporting(false);
-    }
-  }
+  const [phase, setPhase] = useState("");
 
   async function convert() {
-    if (!cctpText.trim()) { toast.error("Collez d’abord un texte CCTP."); return; }
+    if (!cctpText.trim() && cctpFiles.length === 0) {
+      toast.error("Ajoutez le CCTP : un PDF ou du texte collé.");
+      return;
+    }
     setBusy(true);
     try {
+      // Rastérisation du/des CCTP PDF → images lues nativement par Claude.
+      const cctpImages: { data: string; mediaType: string }[] = [];
+      if (cctpFiles.length > 0) {
+        setPhase("Lecture du CCTP…");
+        const { rasterizePdf } = await import("@/lib/pdf-render");
+        for (const f of cctpFiles) cctpImages.push(...(await rasterizePdf(f)));
+        const totalChars = cctpImages.reduce((n, im) => n + im.data.length, 0);
+        if (totalChars > 3_800_000) {
+          toast.error("CCTP trop volumineux. Réduisez le nombre de pages, ou collez le texte.");
+          setBusy(false); setPhase(""); return;
+        }
+      }
+
+      setPhase("Analyse…");
       const res = await fetch("/api/dpgf/convert", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cctpText, planNotes }),
+        body: JSON.stringify({ cctpText, planNotes, cctpImages }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -58,7 +55,7 @@ export default function DpgfPage() {
       toast.success(`${data.lines.length} ouvrage(s) extraits. Vérifiez les quantités proposées.`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erreur");
-    } finally { setBusy(false); }
+    } finally { setBusy(false); setPhase(""); }
   }
 
   function update(i: number, patch: Partial<Line>) {
@@ -79,26 +76,37 @@ export default function DpgfPage() {
 
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
         <Card className="h-fit">
-          <CardHeader><CardTitle className="text-navy-900">Source</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-navy-900">Source du CCTP</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Texte du CCTP</Label>
-                <label className={cn(
-                  "inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input px-2.5 py-1 text-xs font-medium text-navy-700 transition-colors hover:border-gold-400 hover:bg-gold-50/40",
-                  importing && "pointer-events-none opacity-60"
-                )}>
-                  {importing ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
-                  {importing ? "Import…" : "Importer (PDF, Word, Excel)"}
-                  <input
-                    type="file"
-                    accept={ACCEPTED_DOCS}
-                    hidden
-                    onChange={(e) => { importFile(e.target.files?.[0]); e.currentTarget.value = ""; }}
-                  />
-                </label>
-              </div>
-              <Textarea value={cctpText} onChange={(e) => setCctpText(e.target.value)} className="min-h-[220px]" placeholder="Collez ici le contenu du CCTP à décomposer, ou importez un fichier ci-dessus…" />
+              <Label>CCTP en PDF</Label>
+              <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30 py-6 text-center transition-colors hover:border-gold-400 hover:bg-gold-50/40">
+                <Upload className="size-5 text-navy-600" />
+                <span className="mt-1 text-xs font-medium text-navy-800">Déposer le(s) CCTP en PDF</span>
+                <span className="text-[11px] text-muted-foreground">Lu directement par l’IA (texte + tableaux)</span>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  multiple
+                  hidden
+                  onChange={(e) => { setCctpFiles((p) => [...p, ...Array.from(e.target.files ?? [])]); e.currentTarget.value = ""; }}
+                />
+              </label>
+              {cctpFiles.length > 0 && (
+                <ul className="space-y-1.5">
+                  {cctpFiles.map((f, i) => (
+                    <li key={i} className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs">
+                      <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="flex-1 truncate text-navy-800">{f.name}</span>
+                      <button onClick={() => setCctpFiles((p) => p.filter((_, j) => j !== i))} className="text-destructive hover:opacity-70"><X className="size-3.5" /></button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>…ou coller le texte du CCTP (optionnel)</Label>
+              <Textarea value={cctpText} onChange={(e) => setCctpText(e.target.value)} className="min-h-[140px]" placeholder="Collez ici le contenu du CCTP si vous n’avez pas de PDF…" />
             </div>
             <div className="space-y-2">
               <Label>Dimensions / plans (optionnel)</Label>
@@ -106,7 +114,7 @@ export default function DpgfPage() {
             </div>
             <Button variant="gold" size="lg" className="w-full" disabled={busy} onClick={convert}>
               {busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-              {busy ? "Analyse…" : "Convertir en DPGF"}
+              {busy ? (phase || "Analyse…") : "Convertir en DPGF"}
             </Button>
           </CardContent>
         </Card>

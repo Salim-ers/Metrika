@@ -1,5 +1,5 @@
 import { runClaude } from "@/lib/ai/client";
-import { PRICING_PROMPT } from "@/lib/ai/prompts";
+import { PRICING_PROMPT, PRICING_SCHEMA } from "@/lib/ai/prompts";
 
 /** Prix de vente = déboursé × (1 + frais généraux) × (1 + marge). */
 export function computeSellingPrice(
@@ -13,5 +13,5 @@ export async function suggestPrice(designation: string, lot?: string) {
   const user = `Ouvrage : ${designation}${lot ? `\nLot : ${lot}` : ""}\nPropose un prix de référence.`;
   return runClaude<{
     unitPrice: number; marginRate: number; generalFeesRate: number; confidence: string;
-  }>({ system: PRICING_PROMPT, user, json: true, maxTokens: 500 });
+  }>({ system: PRICING_PROMPT, user, schema: PRICING_SCHEMA, maxTokens: 500 });
 }

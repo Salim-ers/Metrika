@@ -12,15 +12,16 @@ export async function GET(req: NextRequest) {
   const model = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
   const info = { hasKey: !!key, keyPrefix: key.slice(0, 7), keyLen: key.length, model };
   try {
-    const Anthropic = (await import("@anthropic-ai/sdk")).default;
-    const a = new Anthropic({ apiKey: key });
-    const r = await a.messages.create({
-      model,
-      max_tokens: 16,
-      messages: [{ role: "user", content: "Réponds juste: OK" }],
+    // Teste le VRAI chemin de génération (tool-use / sortie structurée).
+    const { generateCctpSection } = await import("@/services/cctp.service");
+    const sec = await generateCctpSection({ lot: "Peinture", projectType: "Logement collectif" });
+    return NextResponse.json({
+      ...info,
+      ok: true,
+      lot: sec.lot,
+      contentLength: sec.content?.length ?? 0,
+      sample: (sec.content ?? "").slice(0, 120),
     });
-    const text = r.content.find((b) => b.type === "text");
-    return NextResponse.json({ ...info, ok: true, reply: text && "text" in text ? text.text : null });
   } catch (e) {
     const err = e as { message?: string; status?: number; name?: string };
     return NextResponse.json({ ...info, ok: false, error: err?.message, status: err?.status, name: err?.name });

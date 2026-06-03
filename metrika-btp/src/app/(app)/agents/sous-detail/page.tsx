@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { formatMAD } from "@/lib/utils";
 import { LOTS_BTP, UNITS } from "@/lib/constants";
-import { Loader2, Calculator, FileDown, Sparkles, Trash2, Plus, CheckCircle2 } from "lucide-react";
+import { Loader2, Calculator, FileDown, Sparkles, Trash2, Plus, CheckCircle2, Upload, FileText, X } from "lucide-react";
 
 type CompType = "MAIN_OEUVRE" | "MATERIAUX" | "MATERIEL";
 
@@ -35,7 +35,9 @@ export default function SousDetailPage() {
   const [designation, setDesignation] = useState("");
   const [unit, setUnit] = useState<string>("m²");
   const [lot, setLot] = useState<string>("");
+  const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState("");
   const [generated, setGenerated] = useState(false);
   const [validated, setValidated] = useState(false);
 
@@ -45,21 +47,34 @@ export default function SousDetailPage() {
   const [profitRate, setProfitRate] = useState(0.1);
 
   async function generate() {
-    if (!designation.trim()) {
-      toast.error("Indiquez d’abord la désignation de l’ouvrage.");
+    if (!designation.trim() && files.length === 0) {
+      toast.error("Indiquez une désignation ou joignez un PDF de l’ouvrage.");
       return;
     }
     setBusy(true);
     setValidated(false);
     try {
+      const images: { data: string; mediaType: string }[] = [];
+      if (files.length > 0) {
+        setPhase("Lecture du PDF…");
+        const { rasterizePdf } = await import("@/lib/pdf-render");
+        for (const f of files) images.push(...(await rasterizePdf(f)));
+        const totalChars = images.reduce((n, im) => n + im.data.length, 0);
+        if (totalChars > 3_800_000) {
+          toast.error("PDF trop volumineux. Réduisez le nombre de pages.");
+          setBusy(false); setPhase(""); return;
+        }
+      }
+      setPhase("Analyse…");
       const res = await fetch("/api/sous-detail/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ designation, unit, lot: lot || undefined }),
+        body: JSON.stringify({ designation, unit, lot: lot || undefined, images }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setComponents(data.components ?? []);
+      if (data.designation && !designation.trim()) setDesignation(data.designation);
       setYieldVal(data.yield ?? 1);
       setGeneralFeesRate(data.generalFeesRate ?? 0.1);
       setProfitRate(data.profitRate ?? 0.1);
@@ -69,6 +84,7 @@ export default function SousDetailPage() {
       toast.error(e instanceof Error ? e.message : "Erreur de génération");
     } finally {
       setBusy(false);
+      setPhase("");
     }
   }
 
@@ -113,6 +129,26 @@ export default function SousDetailPage() {
                 placeholder="Ex : Béton armé pour poteaux, dosé à 350 kg/m³"
               />
             </div>
+            <div className="space-y-2">
+              <Label>…ou joindre un PDF de l’ouvrage (optionnel)</Label>
+              <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30 py-4 text-center transition-colors hover:border-gold-400 hover:bg-gold-50/40">
+                <Upload className="size-4 text-navy-600" />
+                <span className="mt-1 text-xs font-medium text-navy-800">Déposer un PDF (descriptif, extrait CCTP…)</span>
+                <input type="file" accept="application/pdf" multiple hidden
+                  onChange={(e) => { setFiles((p) => [...p, ...Array.from(e.target.files ?? [])]); e.currentTarget.value = ""; }} />
+              </label>
+              {files.length > 0 && (
+                <ul className="space-y-1.5">
+                  {files.map((f, i) => (
+                    <li key={i} className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs">
+                      <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="flex-1 truncate text-navy-800">{f.name}</span>
+                      <button onClick={() => setFiles((p) => p.filter((_, j) => j !== i))} className="text-destructive hover:opacity-70"><X className="size-3.5" /></button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Unité</Label>
@@ -142,7 +178,7 @@ export default function SousDetailPage() {
             </div>
             <Button variant="gold" size="lg" className="w-full" disabled={busy} onClick={generate}>
               {busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-              {busy ? "Analyse…" : "Générer le sous-détail"}
+              {busy ? (phase || "Analyse…") : "Générer le sous-détail"}
             </Button>
 
             {generated && (

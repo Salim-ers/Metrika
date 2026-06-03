@@ -110,6 +110,76 @@ SORTIE : renvoie STRICTEMENT un JSON :
 { "unitPrice": 0, "marginRate": 0.10, "generalFeesRate": 0.10, "confidence": "faible|moyenne|forte" }
 Indique une confiance "faible" si l'ouvrage est ambigu. Ces valeurs sont des PROPOSITIONS à valider.`;
 
+// ── Schémas de sortie structurée (tool-use) ──────────────────────
+export const CCTP_SCHEMA = {
+  type: "object",
+  properties: {
+    lot: { type: "string" },
+    content: { type: "string", description: "Contenu en Markdown structuré (titres ## et listes)." },
+  },
+  required: ["lot", "content"],
+} as const;
+
+export const DPGF_SCHEMA = {
+  type: "object",
+  properties: {
+    lines: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          lot: { type: "string" },
+          code: { type: "string" },
+          designation: { type: "string" },
+          description: { type: "string" },
+          unit: { type: "string", description: "m², ml, m³, U, ens, kg, forfait" },
+          quantity: { type: "number" },
+          quantitySource: { type: "string", description: "cctp | plan | estimation" },
+        },
+        required: ["lot", "designation", "unit", "quantity"],
+      },
+    },
+  },
+  required: ["lines"],
+} as const;
+
+export const SOUS_DETAIL_SCHEMA = {
+  type: "object",
+  properties: {
+    designation: { type: "string" },
+    unit: { type: "string" },
+    yield: { type: "number", description: "rendement en unités/jour" },
+    generalFeesRate: { type: "number" },
+    profitRate: { type: "number" },
+    components: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          type: { type: "string", enum: ["MAIN_OEUVRE", "MATERIAUX", "MATERIEL"] },
+          designation: { type: "string" },
+          unit: { type: "string" },
+          quantity: { type: "number" },
+          unitCost: { type: "number" },
+        },
+        required: ["type", "designation", "unit", "quantity", "unitCost"],
+      },
+    },
+  },
+  required: ["designation", "unit", "yield", "generalFeesRate", "profitRate", "components"],
+} as const;
+
+export const PRICING_SCHEMA = {
+  type: "object",
+  properties: {
+    unitPrice: { type: "number" },
+    marginRate: { type: "number" },
+    generalFeesRate: { type: "number" },
+    confidence: { type: "string", enum: ["faible", "moyenne", "forte"] },
+  },
+  required: ["unitPrice", "marginRate", "generalFeesRate", "confidence"],
+} as const;
+
 export const AGENT_PROMPTS = {
   CCTP: CCTP_PROMPT,
   DPGF: DPGF_PROMPT,
