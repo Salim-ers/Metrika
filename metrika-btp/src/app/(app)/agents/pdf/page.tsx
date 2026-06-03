@@ -84,6 +84,36 @@ export default function PdfAgentPage() {
   const [compress, setCompress] = useState(true);
   const [busy, setBusy] = useState(false);
 
+  // Fusion 100 % côté navigateur (pdf-lib) : aucune limite de taille/nombre,
+  // les fichiers ne quittent jamais la machine.
+  async function mergeLocally(files: PickedFile[], compress: boolean) {
+    if (files.length === 0) { toast.error("Ajoutez au moins un fichier."); return; }
+    setBusy(true);
+    try {
+      const { PDFDocument } = await import("pdf-lib");
+      const out = await PDFDocument.create();
+      for (const { file } of files) {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+        const pages = await out.copyPages(src, src.getPageIndices());
+        pages.forEach((p) => out.addPage(p));
+      }
+      const data = await out.save({ useObjectStreams: compress });
+      const blob = new Blob([data as BlobPart], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "metrika-fusion.pdf";
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`${files.length} PDF fusionnés et téléchargés.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erreur pendant la fusion. Un fichier est-il un PDF valide ?");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function run(endpoint: string, files: PickedFile[], extra?: Record<string, string>) {
     if (files.length === 0) { toast.error("Ajoutez au moins un fichier."); return; }
     setBusy(true);
@@ -139,7 +169,7 @@ export default function PdfAgentPage() {
                 <Badge variant="muted">{pdfFiles.length} fichier(s)</Badge>
               </div>
 
-              <Button variant="gold" size="lg" disabled={busy} onClick={() => run("/api/pdf/merge", pdfFiles, { compress: String(compress) })}>
+              <Button variant="gold" size="lg" disabled={busy} onClick={() => mergeLocally(pdfFiles, compress)}>
                 {busy ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
                 Fusionner et télécharger
               </Button>
