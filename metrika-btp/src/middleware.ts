@@ -1,5 +1,10 @@
-import { auth } from "@/lib/auth";
+import NextAuth from "next-auth";
+import { authConfig } from "@/lib/auth.config";
 import { NextResponse } from "next/server";
+
+// Instance edge-safe (sans Prisma ni bcrypt) : le middleware tourne
+// en Edge runtime et ne lit que le JWT de session.
+const { auth } = NextAuth(authConfig);
 
 // Verrouille toute l'application : accès réservé à l'utilisateur unique.
 export default auth((req) => {
