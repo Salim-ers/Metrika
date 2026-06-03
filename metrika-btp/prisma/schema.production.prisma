@@ -1,22 +1,19 @@
 // ╔══════════════════════════════════════════════════════════════╗
-// ║  Metrika Métrage BTP Maroc — Schéma de base de données         ║
-// ║  SQLite (dev local) — voir note prod ci-dessous                ║
+// ║  Metrika Métrage BTP Maroc — Schéma PRODUCTION (PostgreSQL)     ║
+// ║  Utilisé par Vercel via le script "build" (--schema).          ║
+// ║  Le dev local utilise prisma/schema.prisma (SQLite).           ║
+// ║  Les deux fichiers ont des MODÈLES IDENTIQUES : seule la        ║
+// ║  datasource change. Le client Prisma généré est donc le même.  ║
 // ╚══════════════════════════════════════════════════════════════╝
-//
-// PRODUCTION (Vercel / Neon PostgreSQL) :
-//   1. provider = "postgresql"
-//   2. ajouter   directUrl = env("DIRECT_URL")
-//   3. DATABASE_URL / DIRECT_URL = chaînes Postgres
-// Le reste du schéma est volontairement compatible Postgres ET SQLite
-// (les "enum" sont des String avec valeurs fixes, pas de @db.Text natif).
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // connexion runtime (poolée — Neon/Vercel)
+  directUrl = env("DIRECT_URL")   // connexion directe pour `prisma db push`
 }
 
 // ── Authentification (utilisateur unique) ────────────────────────
@@ -27,7 +24,7 @@ model User {
   name          String?
   passwordHash  String
   role          String    @default("ADMIN")
-  twoFactorSecret String?         // réservé pour la 2FA future
+  twoFactorSecret String?
   twoFactorEnabled Boolean @default(false)
   image         String?
   createdAt     DateTime  @default(now())
@@ -68,30 +65,26 @@ model Session {
 // ── Paramètres entreprise (en-tête de tous les documents) ────────
 model Company {
   id            String   @id @default(cuid())
-  name          String                          // Raison sociale
-  legalForm     String?                         // SARL, SA, etc.
+  name          String
+  legalForm     String?
   logoUrl       String?
-  stampUrl      String?                         // Cachet / signature
-  // Informations légales Maroc
-  ice           String?                         // Identifiant Commun de l'Entreprise
-  rc            String?                         // Registre de Commerce
-  ifNumber      String?                         // Identifiant Fiscal
-  cnss          String?                         // N° CNSS
-  patente       String?                         // Taxe professionnelle
+  stampUrl      String?
+  ice           String?
+  rc            String?
+  ifNumber      String?
+  cnss          String?
+  patente       String?
   capital       String?
-  // Coordonnées
   address       String?
   city          String?
   phone         String?
   email         String?
   website       String?
-  // Bancaire
   bankName      String?
   rib           String?
   iban          String?
   swift         String?
-  // Réglages devis
-  vatRate       Float    @default(20)           // TVA Maroc 20 %
+  vatRate       Float    @default(20)
   quotePrefix   String   @default("DEV")
   quoteCounter  Int      @default(1)
   paymentTerms  String?
@@ -118,7 +111,7 @@ model Project {
   id          String   @id @default(cuid())
   name        String
   reference   String?
-  type        String?                          // Logement, tertiaire, industriel…
+  type        String?
   location    String?
   clientId    String?
   client      Client?  @relation(fields: [clientId], references: [id])
@@ -140,7 +133,7 @@ model Document {
   kind        String
   mimeType    String?
   size        Int?
-  storageKey  String                            // chemin local ou clé S3
+  storageKey  String
   status      String        @default("DRAFT")
   projectId   String?
   project     Project?      @relation(fields: [projectId], references: [id])
@@ -151,16 +144,15 @@ model Document {
   createdAt   DateTime      @default(now())
 }
 
-// Trace toute opération d'un agent IA (le « journal »)
 // agent  : "PDF" | "CCTP" | "DPGF" | "SOUS_DETAIL" | "PRICING" | "DEVIS"
 // status : "QUEUED" | "RUNNING" | "AWAITING_VALIDATION" | "DONE" | "FAILED"
 model Treatment {
   id          String        @id @default(cuid())
   agent       String
-  action      String                            // ex: "Fusion PDF", "Génération CCTP"
+  action      String
   status      String          @default("QUEUED")
-  inputMeta   String?                           // JSON sérialisé
-  outputMeta  String?                           // JSON sérialisé
+  inputMeta   String?
+  outputMeta  String?
   error       String?
   userId      String?
   user        User?         @relation(fields: [userId], references: [id])
@@ -187,12 +179,12 @@ model CctpSection {
   id       String @id @default(cuid())
   cctpId   String
   cctp     Cctp   @relation(fields: [cctpId], references: [id], onDelete: Cascade)
-  lot      String              // ex: "Gros Œuvre"
+  lot      String
   order    Int    @default(0)
-  content  String              // contenu structuré (markdown) éditable avant export
+  content  String
 }
 
-// ── Agent DPGF (Décomposition du Prix Global et Forfaitaire) ──────
+// ── Agent DPGF ────────────────────────────────────────────────────
 model Dpgf {
   id        String     @id @default(cuid())
   title     String
@@ -211,15 +203,14 @@ model DpgfLine {
   dpgfId       String
   dpgf         Dpgf     @relation(fields: [dpgfId], references: [id], onDelete: Cascade)
   lot          String
-  code         String?                          // n° d'article
+  code         String?
   designation  String
   description  String?
-  unit         String                           // m², ml, m³, U, ens, kg…
+  unit         String
   quantity     Float    @default(0)
   unitPrice    Float    @default(0)
-  // Provenance de la quantité : "plan", "cctp", "manuel"
   quantitySource String?
-  validated    Boolean  @default(false)         // validation humaine ligne par ligne
+  validated    Boolean  @default(false)
   order        Int      @default(0)
   sousDetail   SousDetail?
 }
@@ -231,12 +222,11 @@ model SousDetail {
   dpgfLine    DpgfLine? @relation(fields: [dpgfLineId], references: [id])
   designation String
   unit        String
-  yield       Float    @default(1)              // rendement (U/jour)
-  // Synthèse calculée
+  yield       Float    @default(1)
   debourseSec     Float @default(0)
-  generalFeesRate Float @default(0.10)          // frais généraux
-  profitRate      Float @default(0.10)          // bénéfice
-  sellingPrice    Float @default(0)             // prix de vente unitaire
+  generalFeesRate Float @default(0.10)
+  profitRate      Float @default(0.10)
+  sellingPrice    Float @default(0)
   status      String   @default("DRAFT")
   createdAt   DateTime @default(now())
   components  SousDetailComponent[]
@@ -250,7 +240,7 @@ model SousDetailComponent {
   type         String
   designation  String
   unit         String
-  quantity     Float       @default(0)          // par unité d'ouvrage
+  quantity     Float       @default(0)
   unitCost     Float       @default(0)
 }
 
@@ -259,14 +249,14 @@ model PriceItem {
   id            String   @id @default(cuid())
   designation   String
   unit          String
-  unitPrice     Float                           // déboursé / prix d'achat
+  unitPrice     Float
   category      String?
   lot           String?
   supplier      String?
   source        String?
   marginRate    Float    @default(0.10)
   generalFeesRate Float  @default(0.10)
-  sellingPrice  Float    @default(0)            // prix de vente recommandé
+  sellingPrice  Float    @default(0)
   updatedAt     DateTime @updatedAt
   createdAt     DateTime @default(now())
   history       PriceHistory[]
@@ -287,7 +277,7 @@ model PriceHistory {
 // ── Générateur de devis ───────────────────────────────────────────
 model Quote {
   id          String      @id @default(cuid())
-  number      String      @unique               // DEV-2026-0001
+  number      String      @unique
   title       String?
   clientId    String?
   client      Client?     @relation(fields: [clientId], references: [id])

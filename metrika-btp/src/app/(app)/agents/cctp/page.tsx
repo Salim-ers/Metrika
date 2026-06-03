@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { LOTS_BTP, PROJECT_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { Loader2, FileText, ShieldCheck, FileDown, Sparkles, Upload, X, ScanText } from "lucide-react";
+import { PdfDropzone } from "@/components/ui/pdf-dropzone";
+import { Loader2, FileText, ShieldCheck, FileDown, Sparkles, X, ScanText } from "lucide-react";
 
 interface Section { lot: string; content: string; validated?: boolean }
 
@@ -130,22 +131,11 @@ export default function CctpPage() {
 
             <div className="space-y-2">
               <Label>Plans du projet (PDF, optionnel)</Label>
-              <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30 py-5 text-center transition-colors hover:border-gold-400 hover:bg-gold-50/40">
-                <Upload className="size-4 text-navy-600" />
-                <span className="mt-1 text-xs font-medium text-navy-800">Ajouter des plans PDF</span>
-                <span className="text-[11px] text-muted-foreground">Claude lit les plans pour adapter le CCTP</span>
-                <input
-                  type="file"
-                  accept="application/pdf"
-                  multiple
-                  hidden
-                  onChange={(e) => {
-                    const list = Array.from(e.target.files ?? []);
-                    setPlanFiles((p) => [...p, ...list]);
-                    e.currentTarget.value = "";
-                  }}
-                />
-              </label>
+              <PdfDropzone
+                title="Glissez vos plans PDF ici ou cliquez"
+                hint="Claude lit les plans pour adapter le CCTP"
+                onFiles={(list) => setPlanFiles((p) => [...p, ...list])}
+              />
               {planFiles.length > 0 && (
                 <ul className="space-y-1.5">
                   {planFiles.map((f, i) => (

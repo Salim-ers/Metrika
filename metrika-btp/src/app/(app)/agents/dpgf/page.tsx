@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { formatMAD } from "@/lib/utils";
-import { Loader2, Table2, CheckCircle2, FileDown, Sparkles, Upload, FileText, X } from "lucide-react";
+import { PdfDropzone } from "@/components/ui/pdf-dropzone";
+import { Loader2, Table2, CheckCircle2, FileDown, Sparkles, FileText, X } from "lucide-react";
 
 interface Line {
   lot: string; code?: string; designation: string; description?: string;
@@ -97,18 +98,11 @@ export default function DpgfPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>CCTP en PDF</Label>
-              <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30 py-6 text-center transition-colors hover:border-gold-400 hover:bg-gold-50/40">
-                <Upload className="size-5 text-navy-600" />
-                <span className="mt-1 text-xs font-medium text-navy-800">Déposer le(s) CCTP en PDF</span>
-                <span className="text-[11px] text-muted-foreground">Lu directement par l’IA (texte + tableaux)</span>
-                <input
-                  type="file"
-                  accept="application/pdf"
-                  multiple
-                  hidden
-                  onChange={(e) => { setCctpFiles((p) => [...p, ...Array.from(e.target.files ?? [])]); e.currentTarget.value = ""; }}
-                />
-              </label>
+              <PdfDropzone
+                title="Glissez le(s) CCTP en PDF ici ou cliquez"
+                hint="Lu directement par l’IA (texte + tableaux)"
+                onFiles={(list) => setCctpFiles((p) => [...p, ...list])}
+              />
               {cctpFiles.length > 0 && (
                 <ul className="space-y-1.5">
                   {cctpFiles.map((f, i) => (

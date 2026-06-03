@@ -11,7 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { formatMAD } from "@/lib/utils";
 import { LOTS_BTP, UNITS } from "@/lib/constants";
-import { Loader2, Calculator, FileDown, Sparkles, Trash2, Plus, CheckCircle2, Upload, FileText, X } from "lucide-react";
+import { PdfDropzone } from "@/components/ui/pdf-dropzone";
+import { Loader2, Calculator, FileDown, Sparkles, Trash2, Plus, CheckCircle2, FileText, X } from "lucide-react";
 
 type CompType = "MAIN_OEUVRE" | "MATERIAUX" | "MATERIEL";
 
@@ -148,12 +149,11 @@ export default function SousDetailPage() {
             </div>
             <div className="space-y-2">
               <Label>…ou joindre un PDF de l’ouvrage (optionnel)</Label>
-              <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30 py-4 text-center transition-colors hover:border-gold-400 hover:bg-gold-50/40">
-                <Upload className="size-4 text-navy-600" />
-                <span className="mt-1 text-xs font-medium text-navy-800">Déposer un PDF (descriptif, extrait CCTP…)</span>
-                <input type="file" accept="application/pdf" multiple hidden
-                  onChange={(e) => { setFiles((p) => [...p, ...Array.from(e.target.files ?? [])]); e.currentTarget.value = ""; }} />
-              </label>
+              <PdfDropzone
+                title="Glissez un PDF ici ou cliquez (descriptif, extrait CCTP…)"
+                hint="Lu par l’IA pour décomposer l’ouvrage"
+                onFiles={(list) => setFiles((p) => [...p, ...list])}
+              />
               {files.length > 0 && (
                 <ul className="space-y-1.5">
                   {files.map((f, i) => (
