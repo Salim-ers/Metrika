@@ -1,6 +1,6 @@
 "use client";
 
-import { CompanyExport, dataUrlToBytes } from "@/lib/export-common";
+import { CompanyExport, dataUrlToBytes, fmtMad, winAnsiSafe } from "@/lib/export-common";
 
 export interface DpgfExportLine {
   lot: string;
@@ -22,7 +22,7 @@ function download(blob: Blob, name: string) {
   URL.revokeObjectURL(url);
 }
 
-const fmt = (n: number) => n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmt = (n: number) => fmtMad(n);
 
 // ── Excel ─────────────────────────────────────────────────────────
 export async function exportDpgfExcel(lines: DpgfExportLine[]) {
@@ -105,9 +105,10 @@ export async function exportDpgfPdf(lines: DpgfExportLine[], company?: CompanyEx
   let page = doc.addPage([W, H]); let y = H - M;
 
   const t = (s: string, x: number, yy: number, o?: { size?: number; bold?: boolean; color?: ReturnType<typeof rgb>; align?: "right" }) => {
+    const ss = winAnsiSafe(s);
     const size = o?.size ?? 8; const f = o?.bold ? bold : font;
-    const xx = o?.align === "right" ? x - f.widthOfTextAtSize(s, size) : x;
-    page.drawText(s, { x: xx, y: yy, size, font: f, color: o?.color ?? NAVY });
+    const xx = o?.align === "right" ? x - f.widthOfTextAtSize(ss, size) : x;
+    page.drawText(ss, { x: xx, y: yy, size, font: f, color: o?.color ?? NAVY });
   };
   const wrap = (s: string, size: number, maxW: number) => {
     const words = s.split(/\s+/); const out: string[] = []; let cur = "";

@@ -1,6 +1,6 @@
 "use client";
 
-import { CompanyExport, downloadBlob, fmtMad, dataUrlToBytes, legalLines } from "@/lib/export-common";
+import { CompanyExport, downloadBlob, fmtMad, dataUrlToBytes, legalLines, winAnsiSafe } from "@/lib/export-common";
 
 export interface DevisData {
   quoteNumber: string;
@@ -34,9 +34,10 @@ export async function exportDevisPdf(d: DevisData): Promise<void> {
   const { ht, vat, ttc } = totals(d);
 
   const text = (s: string, x: number, yy: number, o?: { size?: number; bold?: boolean; color?: ReturnType<typeof rgb>; align?: "right" }) => {
+    const ss = winAnsiSafe(s);
     const size = o?.size ?? 9; const f = o?.bold ? bold : font;
-    const xx = o?.align === "right" ? x - f.widthOfTextAtSize(s, size) : x;
-    page.drawText(s, { x: xx, y: yy, size, font: f, color: o?.color ?? NAVY });
+    const xx = o?.align === "right" ? x - f.widthOfTextAtSize(ss, size) : x;
+    page.drawText(ss, { x: xx, y: yy, size, font: f, color: o?.color ?? NAVY });
   };
   const wrap = (s: string, f: typeof font, size: number, maxW: number) => {
     const words = s.split(/\s+/); const out: string[] = []; let cur = "";

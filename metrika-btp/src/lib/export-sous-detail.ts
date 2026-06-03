@@ -1,6 +1,6 @@
 "use client";
 
-import { CompanyExport, downloadBlob, fmtMad, dataUrlToBytes } from "@/lib/export-common";
+import { CompanyExport, downloadBlob, fmtMad, dataUrlToBytes, winAnsiSafe } from "@/lib/export-common";
 
 export interface SousDetailExport {
   designation: string;
@@ -68,9 +68,10 @@ export async function exportSousDetailPdf(d: SousDetailExport): Promise<void> {
   const W = 595.28, H = 841.89, M = 48;
   let page = doc.addPage([W, H]); let y = H - M;
   const t = (s: string, x: number, yy: number, o?: { size?: number; bold?: boolean; color?: ReturnType<typeof rgb>; align?: "right" }) => {
+    const ss = winAnsiSafe(s);
     const size = o?.size ?? 9; const f = o?.bold ? bold : font;
-    const xx = o?.align === "right" ? x - f.widthOfTextAtSize(s, size) : x;
-    page.drawText(s, { x: xx, y: yy, size, font: f, color: o?.color ?? NAVY });
+    const xx = o?.align === "right" ? x - f.widthOfTextAtSize(ss, size) : x;
+    page.drawText(ss, { x: xx, y: yy, size, font: f, color: o?.color ?? NAVY });
   };
   page.drawRectangle({ x: 0, y: H - 5, width: W, height: 5, color: GOLD });
   const logo = dataUrlToBytes(d.company?.logoUrl);

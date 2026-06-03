@@ -1,6 +1,6 @@
 "use client";
 
-import { CompanyExport, dataUrlToBytes } from "@/lib/export-common";
+import { CompanyExport, dataUrlToBytes, winAnsiSafe } from "@/lib/export-common";
 
 export interface CctpSection {
   lot: string;
@@ -46,7 +46,7 @@ export async function exportCctpPdf(sections: CctpSection[], company?: CompanyEx
   const para = (s: string, f: typeof font, size: number, color = NAVY, indent = 0, gap = 4) => {
     for (const ln of wrap(s, f, size)) {
       ensure(size + gap);
-      page.drawText(ln, { x: M + indent, y, size, font: f, color });
+      page.drawText(winAnsiSafe(ln), { x: M + indent, y, size, font: f, color });
       y -= size + gap;
     }
   };
@@ -67,7 +67,7 @@ export async function exportCctpPdf(sections: CctpSection[], company?: CompanyEx
     ensure(30);
     y -= 8;
     page.drawRectangle({ x: M, y: y - 4, width: W - 2 * M, height: 22, color: NAVY });
-    page.drawText(sec.lot ?? "Lot", { x: M + 8, y: y + 2, size: 12, font: bold, color: rgb(1, 1, 1) });
+    page.drawText(winAnsiSafe(sec.lot ?? "Lot"), { x: M + 8, y: y + 2, size: 12, font: bold, color: rgb(1, 1, 1) });
     y -= 30;
     for (const raw of (sec.content ?? "").split("\n")) {
       const { kind, text } = classify(raw);

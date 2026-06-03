@@ -33,8 +33,34 @@ export function downloadBlob(blob: Blob, name: string) {
   URL.revokeObjectURL(url);
 }
 
+// Caractères typographiques hors Latin-1 mais supportés par WinAnsi (pdf-lib).
+const WINANSI_EXTRA = new Set([
+  0x20ac, 0x2018, 0x2019, 0x201c, 0x201d, 0x2013, 0x2014, 0x2022, 0x2026,
+  0x2122, 0x0152, 0x0153, 0x0160, 0x0161, 0x0178, 0x017d, 0x017e, 0x0192,
+]);
+const SPACE_LIKE = new Set([0x202f, 0x2009, 0x00a0, 0x2007, 0x2060, 0x200b, 0x3000, 0x2002, 0x2003]);
+
+/**
+ * Rend une chaîne encodable par la police WinAnsi de pdf-lib. Le format fr-FR
+ * insère une espace fine insécable (U+202F) comme séparateur de milliers, que
+ * pdf-lib ne sait pas encoder → sans ce nettoyage, l'export PDF plante.
+ */
+export function winAnsiSafe(s: string): string {
+  if (!s) return "";
+  let out = "";
+  for (const ch of s) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (SPACE_LIKE.has(code)) { out += " "; continue; }
+    if (code === 0x2011) { out += "-"; continue; } // tiret insécable
+    if (code >= 0x20 && code <= 0xff) { out += ch; continue; } // Latin-1
+    if (WINANSI_EXTRA.has(code)) { out += ch; continue; }
+    // Caractère non encodable : on le neutralise plutôt que de planter.
+  }
+  return out;
+}
+
 export function fmtMad(n: number): string {
-  return n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return winAnsiSafe(n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 }
 
 /** Décode une data URL en octets + type MIME. */
@@ -74,8 +100,8 @@ export function legalLines(c?: CompanyExport | null): string[] {
   ].filter(Boolean);
   const contact = [c.address, c.city, c.phone, c.email, c.website].filter(Boolean);
   const out: string[] = [];
-  if (contact.length) out.push(contact.join(" · "));
-  if (ids.length) out.push(ids.join(" · "));
-  if (bank.length) out.push(bank.join(" · "));
-  return out as string[];
+  if (contact.length) out.push(contact.join(" - "));
+  if (ids.length) out.push(ids.join(" - "));
+  if (bank.length) out.push(bank.join(" - "));
+  return out;
 }
