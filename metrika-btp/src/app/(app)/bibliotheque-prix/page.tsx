@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -31,35 +31,28 @@ function computeSelling(unitPrice: number, gf: number, margin: number) {
   return Math.round(unitPrice * (1 + gf) * (1 + margin) * 100) / 100;
 }
 
-// Données de démarrage (cf. prisma/seed.ts). Remplacées par la BD une fois branchée.
-const SEED: Omit<PriceItem, "id" | "sellingPrice" | "updatedAt">[] = [
-  { designation: "Béton armé dosé à 350 kg/m³", unit: "m³", unitPrice: 1100, lot: "Gros Œuvre", category: "Béton", marginRate: 0.1, generalFeesRate: 0.1 },
-  { designation: "Maçonnerie agglos creux 20 cm", unit: "m²", unitPrice: 120, lot: "Gros Œuvre", category: "Maçonnerie", marginRate: 0.1, generalFeesRate: 0.1 },
-  { designation: "Enduit ciment sur murs", unit: "m²", unitPrice: 65, lot: "Revêtements", category: "Enduit", marginRate: 0.1, generalFeesRate: 0.1 },
-  { designation: "Carrelage grès cérame 60x60", unit: "m²", unitPrice: 180, lot: "Revêtements", category: "Sol", marginRate: 0.1, generalFeesRate: 0.1 },
-  { designation: "Peinture vinylique 2 couches", unit: "m²", unitPrice: 35, lot: "Peinture", category: "Mur", marginRate: 0.1, generalFeesRate: 0.1 },
-];
-
 const emptyForm = {
   designation: "", unit: "m²", unitPrice: 0, lot: "", category: "",
   supplier: "", source: "Saisie manuelle", marginRate: 0.1, generalFeesRate: 0.1,
 };
 
 export default function BibliothequePrixPage() {
-  const [items, setItems] = useState<PriceItem[]>(() =>
-    SEED.map((p, i) => ({
-      ...p,
-      id: `seed-${i}`,
-      source: "Référence Maroc",
-      sellingPrice: computeSelling(p.unitPrice, p.generalFeesRate, p.marginRate),
-      updatedAt: new Date().toISOString(),
-    }))
-  );
+  const [items, setItems] = useState<PriceItem[]>([]);
   const [query, setQuery] = useState("");
   const [lotFilter, setLotFilter] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [suggesting, setSuggesting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  function load() {
+    fetch("/api/prices")
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((d) => setItems(d.items ?? []))
+      .catch(() => setItems([]));
+  }
+  useEffect(load, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -70,25 +63,67 @@ export default function BibliothequePrixPage() {
     });
   }, [items, query, lotFilter]);
 
-  function addItem() {
+  async function addItem() {
     if (!form.designation.trim()) { toast.error("La désignation est requise."); return; }
-    const item: PriceItem = {
-      ...form,
-      id: `new-${Date.now()}`,
-      lot: form.lot || undefined,
-      category: form.category || undefined,
-      supplier: form.supplier || undefined,
-      sellingPrice: computeSelling(form.unitPrice, form.generalFeesRate, form.marginRate),
-      updatedAt: new Date().toISOString(),
-    };
-    setItems((arr) => [item, ...arr]);
-    setForm(emptyForm);
-    setShowForm(false);
-    toast.success("Prix ajouté à la bibliothèque.");
+    try {
+      const res = await fetch("/api/prices", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setItems((arr) => [data.item, ...arr]);
+      setForm(emptyForm);
+      setShowForm(false);
+      toast.success("Prix ajouté à la bibliothèque.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Ajout impossible");
+    }
   }
 
-  function remove(id: string) {
+  async function remove(id: string) {
     setItems((arr) => arr.filter((it) => it.id !== id));
+    await fetch(`/api/prices?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
+  }
+
+  async function importExcel(file: File | undefined) {
+    if (!file) return;
+    setImporting(true);
+    try {
+      const mod = await import("exceljs");
+      const ExcelJS = (mod as unknown as { default?: typeof mod }).default ?? mod;
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(await file.arrayBuffer());
+      const ws = wb.worksheets[0];
+      if (!ws) throw new Error("Feuille introuvable.");
+      const rows: Record<string, unknown>[] = [];
+      ws.eachRow((row, n) => {
+        if (n === 1) return; // en-tête
+        const v = row.values as unknown[];
+        const designation = String(v[1] ?? "").trim();
+        if (!designation) return;
+        rows.push({
+          designation,
+          unit: String(v[2] ?? "U"),
+          unitPrice: Number(v[3]) || 0,
+          lot: v[4] ? String(v[4]) : undefined,
+          category: v[5] ? String(v[5]) : undefined,
+          supplier: v[6] ? String(v[6]) : undefined,
+          source: "Import Excel",
+        });
+      });
+      if (rows.length === 0) throw new Error("Aucune ligne. Format attendu : Désignation | Unité | P.U. | Lot | Catégorie | Fournisseur");
+      const res = await fetch("/api/prices", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: rows }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      load();
+      toast.success(`${data.count} prix importés.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Import impossible");
+    } finally {
+      setImporting(false);
+    }
   }
 
   async function suggest() {
@@ -126,8 +161,9 @@ export default function BibliothequePrixPage() {
         description="Référentiel de prix unitaires alimentant les DPGF, sous-détails et devis. L’IA peut proposer des prix adaptés au marché marocain."
         action={
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => toast.info("Import Excel — branché sur le service ExcelJS.")}>
-              <Upload className="size-4" /> Importer Excel
+            <input ref={fileRef} type="file" accept=".xlsx,.xls" hidden onChange={(e) => { importExcel(e.target.files?.[0]); e.currentTarget.value = ""; }} />
+            <Button variant="outline" disabled={importing} onClick={() => fileRef.current?.click()}>
+              {importing ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />} Importer Excel
             </Button>
             <Button variant="gold" onClick={() => setShowForm((s) => !s)}>
               <Plus className="size-4" /> Nouveau prix
@@ -250,8 +286,7 @@ export default function BibliothequePrixPage() {
       </Card>
 
       <p className="mt-4 text-xs text-muted-foreground">
-        Note : les prix sont chargés depuis les données de démarrage. Une fois la base PostgreSQL connectée,
-        cette bibliothèque persiste les articles, l’historique des prix et l’import Excel.
+        Les prix sont persistés en base. Import Excel attendu : colonnes <code>Désignation | Unité | P.U. | Lot | Catégorie | Fournisseur</code> (1ʳᵉ ligne = en-têtes).
       </p>
     </div>
   );

@@ -38,12 +38,17 @@ export default function DevisPage() {
   ]);
   const [validated, setValidated] = useState(false);
   const [prices, setPrices] = useState<PriceItem[]>([]);
+  const [company, setCompany] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     fetch("/api/prices")
       .then((r) => (r.ok ? r.json() : { items: [] }))
       .then((d) => setPrices(d.items ?? []))
       .catch(() => setPrices([]));
+    fetch("/api/company")
+      .then((r) => (r.ok ? r.json() : { company: null }))
+      .then((d) => setCompany(d.company ?? null))
+      .catch(() => setCompany(null));
   }, []);
 
   function pickFromLibrary(i: number, priceId: string) {
@@ -73,10 +78,10 @@ export default function DevisPage() {
   const totalTTC = totalHT + totalVAT;
   const canValidate = clientName.trim() !== "" && lines.some((l) => l.designation.trim() && l.unitPrice > 0);
 
-  async function exportPdf() {
+  async function exportDevis(kind: "pdf" | "excel" | "docx") {
     try {
-      const { downloadDevisPdf } = await import("@/lib/devis-pdf");
-      await downloadDevisPdf({
+      const m = await import("@/lib/export-devis");
+      const data = {
         quoteNumber,
         dateLabel: formatDate(today),
         validity,
@@ -84,12 +89,15 @@ export default function DevisPage() {
         clientName,
         clientAddress,
         projectName,
-        companyName: "Metrika Métrage BTP",
         lines,
-      });
-      toast.success("Devis PDF téléchargé.");
+        company: company as never,
+      };
+      if (kind === "pdf") await m.exportDevisPdf(data);
+      else if (kind === "excel") await m.exportDevisExcel(data);
+      else await m.exportDevisDocx(data);
+      toast.success("Devis exporté.");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Export PDF impossible");
+      toast.error(e instanceof Error ? e.message : "Export impossible");
     }
   }
 
@@ -195,9 +203,9 @@ export default function DevisPage() {
             >
               <CheckCircle2 className="size-4" /> {validated ? "Validé" : "Valider le devis"}
             </Button>
-            <Button variant="outline" disabled={!validated} onClick={() => toast.info("Export Excel — branché sur le service ExcelJS.")}><FileDown className="size-4" /> Excel</Button>
-            <Button variant="outline" disabled={!validated} onClick={() => toast.info("Export DOCX.")}><FileDown className="size-4" /> DOCX</Button>
-            <Button variant="gold" disabled={!validated} onClick={exportPdf}><FileDown className="size-4" /> PDF</Button>
+            <Button variant="outline" disabled={!validated} onClick={() => exportDevis("excel")}><FileDown className="size-4" /> Excel</Button>
+            <Button variant="outline" disabled={!validated} onClick={() => exportDevis("docx")}><FileDown className="size-4" /> DOCX</Button>
+            <Button variant="gold" disabled={!validated} onClick={() => exportDevis("pdf")}><FileDown className="size-4" /> PDF</Button>
           </div>
         </div>
 

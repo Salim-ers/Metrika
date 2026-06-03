@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import Image from "next/image";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -17,6 +18,7 @@ interface CompanyForm {
   address: string; city: string; phone: string; email: string; website: string;
   bankName: string; rib: string; iban: string; swift: string;
   vatRate: number; quotePrefix: string; paymentTerms: string;
+  logoUrl: string; stampUrl: string;
 }
 
 const initial: CompanyForm = {
@@ -26,7 +28,17 @@ const initial: CompanyForm = {
   bankName: "", rib: "", iban: "", swift: "",
   vatRate: 20, quotePrefix: "DEV",
   paymentTerms: "Paiement à 30 jours par virement bancaire. Pas d’escompte pour paiement anticipé.",
+  logoUrl: "", stampUrl: "",
 };
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result as string);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -39,13 +51,48 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export default function ParametresPage() {
   const [form, setForm] = useState<CompanyForm>(initial);
+  const [saving, setSaving] = useState(false);
   const set = (k: keyof CompanyForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm({ ...form, [k]: e.target.value });
 
-  function save() {
+  useEffect(() => {
+    fetch("/api/company")
+      .then((r) => (r.ok ? r.json() : { company: null }))
+      .then((d) => {
+        if (d.company) {
+          setForm((f) => ({
+            ...f,
+            ...Object.fromEntries(Object.entries(d.company).filter(([, v]) => v !== null && v !== undefined)),
+          }));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  async function uploadImage(k: "logoUrl" | "stampUrl", file: File | undefined) {
+    if (!file) return;
+    if (file.size > 1_500_000) { toast.error("Image trop lourde (max ~1,5 Mo)."); return; }
+    const dataUrl = await fileToDataUrl(file);
+    setForm((f) => ({ ...f, [k]: dataUrl }));
+    toast.success("Image chargée. Pensez à enregistrer.");
+  }
+
+  async function save() {
     if (!form.name.trim()) { toast.error("La raison sociale est requise."); return; }
-    // Persistance : à brancher sur Prisma (model Company) via une route API /api/company.
-    toast.success("Fiche entreprise enregistrée. Ces informations apparaîtront sur vos documents.");
+    setSaving(true);
+    try {
+      const res = await fetch("/api/company", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Échec");
+      toast.success("Fiche entreprise enregistrée. Le logo apparaîtra sur vos documents.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Enregistrement impossible");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -55,7 +102,7 @@ export default function ParametresPage() {
         title="Paramètres"
         accent="entreprise"
         description="Ces informations alimentent l’en-tête, les mentions légales et le pied de page de tous vos documents officiels."
-        action={<Button variant="gold" onClick={save}><Save className="size-4" /> Enregistrer</Button>}
+        action={<Button variant="gold" disabled={saving} onClick={save}><Save className="size-4" /> {saving ? "Enregistrement…" : "Enregistrer"}</Button>}
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -150,15 +197,37 @@ export default function ParametresPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Logo de l’entreprise</Label>
-                <Button variant="outline" className="w-full" onClick={() => toast.info("Téléversement du logo — branché sur le service de stockage.")}>
-                  <Upload className="size-4" /> Téléverser le logo
-                </Button>
+                <div className="flex items-center gap-3">
+                  {form.logoUrl ? (
+                    <Image src={form.logoUrl} alt="logo" width={96} height={48} unoptimized className="h-12 w-auto rounded border border-border bg-white object-contain p-1" />
+                  ) : (
+                    <div className="flex h-12 w-24 items-center justify-center rounded border border-dashed border-border text-[10px] text-muted-foreground">Aucun logo</div>
+                  )}
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm font-medium hover:border-gold-400">
+                    <Upload className="size-4" /> Téléverser
+                    <input type="file" accept="image/png,image/jpeg" hidden onChange={(e) => uploadImage("logoUrl", e.target.files?.[0])} />
+                  </label>
+                  {form.logoUrl && (
+                    <Button variant="ghost" size="sm" onClick={() => setForm((f) => ({ ...f, logoUrl: "" }))}>Retirer</Button>
+                  )}
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Cachet / signature</Label>
-                <Button variant="outline" className="w-full" onClick={() => toast.info("Téléversement du cachet — branché sur le service de stockage.")}>
-                  <Upload className="size-4" /> Téléverser le cachet
-                </Button>
+                <div className="flex items-center gap-3">
+                  {form.stampUrl ? (
+                    <Image src={form.stampUrl} alt="cachet" width={64} height={64} unoptimized className="h-12 w-12 rounded border border-border bg-white object-contain p-1" />
+                  ) : (
+                    <div className="flex h-12 w-24 items-center justify-center rounded border border-dashed border-border text-[10px] text-muted-foreground">Aucun cachet</div>
+                  )}
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm font-medium hover:border-gold-400">
+                    <Upload className="size-4" /> Téléverser
+                    <input type="file" accept="image/png,image/jpeg" hidden onChange={(e) => uploadImage("stampUrl", e.target.files?.[0])} />
+                  </label>
+                  {form.stampUrl && (
+                    <Button variant="ghost" size="sm" onClick={() => setForm((f) => ({ ...f, stampUrl: "" }))}>Retirer</Button>
+                  )}
+                </div>
               </div>
             </div>
           </CardContent>

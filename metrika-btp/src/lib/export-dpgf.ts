@@ -1,5 +1,7 @@
 "use client";
 
+import { CompanyExport, dataUrlToBytes } from "@/lib/export-common";
+
 export interface DpgfExportLine {
   lot: string;
   code?: string;
@@ -93,7 +95,7 @@ export async function exportDpgfDocx(lines: DpgfExportLine[]) {
 }
 
 // ── PDF ───────────────────────────────────────────────────────────
-export async function exportDpgfPdf(lines: DpgfExportLine[]) {
+export async function exportDpgfPdf(lines: DpgfExportLine[], company?: CompanyExport | null) {
   const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
   const NAVY = rgb(0.078, 0.137, 0.247), GOLD = rgb(0.882, 0.647, 0.196), GREY = rgb(0.45, 0.47, 0.52), LINE = rgb(0.85, 0.86, 0.88);
   const doc = await PDFDocument.create();
@@ -114,8 +116,16 @@ export async function exportDpgfPdf(lines: DpgfExportLine[]) {
   };
 
   page.drawRectangle({ x: 0, y: H - 5, width: W, height: 5, color: GOLD });
+  const logo = dataUrlToBytes(company?.logoUrl);
+  if (logo) {
+    try {
+      const img = logo.mime.includes("png") ? await doc.embedPng(logo.bytes) : await doc.embedJpg(logo.bytes);
+      const lw = 110; const lh = (img.height / img.width) * lw;
+      page.drawImage(img, { x: M, y: y - lh, width: lw, height: lh }); y -= lh + 6;
+    } catch { /* ignore */ }
+  }
   t("DPGF — Décomposition du Prix Global et Forfaitaire", M, y, { size: 13, bold: true }); y -= 16;
-  t("Metrika Métrage BTP", M, y, { size: 9, color: GREY }); y -= 18;
+  t(company?.name ?? "Metrika Métrage BTP", M, y, { size: 9, color: GREY }); y -= 18;
 
   const cDes = M + 8, cUnit = W - M - 230, cQty = W - M - 170, cPu = W - M - 90, cTot = W - M;
   const head = () => {

@@ -1,5 +1,7 @@
 "use client";
 
+import { CompanyExport, dataUrlToBytes } from "@/lib/export-common";
+
 export interface CctpSection {
   lot: string;
   content: string;
@@ -26,7 +28,7 @@ function classify(line: string): { kind: "h2" | "h3" | "li" | "p" | "blank"; tex
 }
 
 // ── PDF ───────────────────────────────────────────────────────────
-export async function exportCctpPdf(sections: CctpSection[]) {
+export async function exportCctpPdf(sections: CctpSection[], company?: CompanyExport | null) {
   const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
   const NAVY = rgb(0.078, 0.137, 0.247), GOLD = rgb(0.882, 0.647, 0.196), GREY = rgb(0.3, 0.32, 0.38);
   const doc = await PDFDocument.create();
@@ -50,8 +52,16 @@ export async function exportCctpPdf(sections: CctpSection[]) {
   };
 
   page.drawRectangle({ x: 0, y: H - 5, width: W, height: 5, color: GOLD });
+  const logo = dataUrlToBytes(company?.logoUrl);
+  if (logo) {
+    try {
+      const img = logo.mime.includes("png") ? await doc.embedPng(logo.bytes) : await doc.embedJpg(logo.bytes);
+      const lw = 120; const lh = (img.height / img.width) * lw;
+      page.drawImage(img, { x: M, y: y - lh, width: lw, height: lh }); y -= lh + 8;
+    } catch { /* ignore */ }
+  }
   para("CCTP — Cahier des Clauses Techniques Particulières", bold, 16);
-  para("Metrika Métrage BTP", font, 9, GREY, 0, 10);
+  para(company?.name ?? "Metrika Métrage BTP", font, 9, GREY, 0, 10);
 
   for (const sec of sections) {
     ensure(30);

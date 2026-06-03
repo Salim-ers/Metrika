@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +23,11 @@ export default function DpgfPage() {
   const [lines, setLines] = useState<Line[]>([]);
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState("");
+  const [company, setCompany] = useState<Record<string, unknown> | null>(null);
+
+  useEffect(() => {
+    fetch("/api/company").then((r) => (r.ok ? r.json() : { company: null })).then((d) => setCompany(d.company ?? null)).catch(() => {});
+  }, []);
 
   async function convert() {
     if (!cctpText.trim() && cctpFiles.length === 0) {
@@ -67,7 +72,7 @@ export default function DpgfPage() {
       const m = await import("@/lib/export-dpgf");
       if (kind === "excel") await m.exportDpgfExcel(lines);
       else if (kind === "docx") await m.exportDpgfDocx(lines);
-      else await m.exportDpgfPdf(lines);
+      else await m.exportDpgfPdf(lines, company as never);
       toast.success("Export généré.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Export impossible");

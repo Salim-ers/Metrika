@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +23,11 @@ export default function CctpPage() {
   const [planContext, setPlanContext] = useState("");
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState("");
+  const [company, setCompany] = useState<Record<string, unknown> | null>(null);
+
+  useEffect(() => {
+    fetch("/api/company").then((r) => (r.ok ? r.json() : { company: null })).then((d) => setCompany(d.company ?? null)).catch(() => {});
+  }, []);
 
   function toggle(lot: string) {
     setSelected((s) => (s.includes(lot) ? s.filter((l) => l !== lot) : [...s, lot]));
@@ -71,7 +76,7 @@ export default function CctpPage() {
       const m = await import("@/lib/export-cctp");
       const data = sections.map((s) => ({ lot: s.lot, content: s.content }));
       if (kind === "docx") await m.exportCctpDocx(data);
-      else await m.exportCctpPdf(data);
+      else await m.exportCctpPdf(data, company as never);
       toast.success("Export généré.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Export impossible");

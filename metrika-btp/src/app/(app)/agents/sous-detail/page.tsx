@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,6 +45,23 @@ export default function SousDetailPage() {
   const [yieldVal, setYieldVal] = useState(1);
   const [generalFeesRate, setGeneralFeesRate] = useState(0.1);
   const [profitRate, setProfitRate] = useState(0.1);
+  const [company, setCompany] = useState<Record<string, unknown> | null>(null);
+
+  useEffect(() => {
+    fetch("/api/company").then((r) => (r.ok ? r.json() : { company: null })).then((d) => setCompany(d.company ?? null)).catch(() => {});
+  }, []);
+
+  async function exportSd(kind: "excel" | "pdf") {
+    try {
+      const m = await import("@/lib/export-sous-detail");
+      const data = { designation, unit, lot, yield: yieldVal, generalFeesRate, profitRate, components, company: company as never };
+      if (kind === "excel") await m.exportSousDetailExcel(data);
+      else await m.exportSousDetailPdf(data);
+      toast.success("Export généré.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export impossible");
+    }
+  }
 
   async function generate() {
     if (!designation.trim() && files.length === 0) {
@@ -352,10 +369,10 @@ export default function SousDetailPage() {
                   >
                     <CheckCircle2 className="size-4" /> {validated ? "Validé" : "Valider"}
                   </Button>
-                  <Button variant="outline" disabled={!validated} onClick={() => toast.info("Export Excel — branché sur le service ExcelJS.")}>
+                  <Button variant="outline" disabled={!validated} onClick={() => exportSd("excel")}>
                     <FileDown className="size-4" /> Excel
                   </Button>
-                  <Button variant="gold" disabled={!validated} onClick={() => toast.info("Export PDF.")}>
+                  <Button variant="gold" disabled={!validated} onClick={() => exportSd("pdf")}>
                     <FileDown className="size-4" /> PDF
                   </Button>
                 </div>
