@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Image from "next/image";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -40,6 +39,33 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+/**
+ * Charge une image (PNG/JPG/WEBP/SVG), la redimensionne côté navigateur via
+ * canvas et renvoie un PNG compact (transparence conservée). Évite les
+ * data URL trop lourdes qui font échouer la sauvegarde et l'embarquement PDF.
+ */
+async function processImage(file: File, maxDim: number): Promise<string> {
+  const src = await fileToDataUrl(file);
+  const img = document.createElement("img");
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error("Image illisible"));
+    img.src = src;
+  });
+  const w0 = img.naturalWidth || img.width;
+  const h0 = img.naturalHeight || img.height;
+  if (!w0 || !h0) throw new Error("Dimensions inconnues");
+  const scale = Math.min(1, maxDim / Math.max(w0, h0));
+  const w = Math.max(1, Math.round(w0 * scale));
+  const h = Math.max(1, Math.round(h0 * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas indisponible");
+  ctx.drawImage(img, 0, 0, w, h);
+  return canvas.toDataURL("image/png");
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
@@ -71,10 +97,13 @@ export default function ParametresPage() {
 
   async function uploadImage(k: "logoUrl" | "stampUrl", file: File | undefined) {
     if (!file) return;
-    if (file.size > 1_500_000) { toast.error("Image trop lourde (max ~1,5 Mo)."); return; }
-    const dataUrl = await fileToDataUrl(file);
-    setForm((f) => ({ ...f, [k]: dataUrl }));
-    toast.success("Image chargée. Pensez à enregistrer.");
+    try {
+      const dataUrl = await processImage(file, 700);
+      setForm((f) => ({ ...f, [k]: dataUrl }));
+      toast.success("Image chargée. Cliquez sur Enregistrer pour la conserver.");
+    } catch {
+      toast.error("Image illisible. Utilisez un fichier PNG ou JPG.");
+    }
   }
 
   async function save() {
@@ -199,13 +228,14 @@ export default function ParametresPage() {
                 <Label>Logo de l’entreprise</Label>
                 <div className="flex items-center gap-3">
                   {form.logoUrl ? (
-                    <Image src={form.logoUrl} alt="logo" width={96} height={48} unoptimized className="h-12 w-auto rounded border border-border bg-white object-contain p-1" />
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={form.logoUrl} alt="logo" className="h-12 w-auto rounded border border-border bg-white object-contain p-1" />
                   ) : (
                     <div className="flex h-12 w-24 items-center justify-center rounded border border-dashed border-border text-[10px] text-muted-foreground">Aucun logo</div>
                   )}
                   <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm font-medium hover:border-gold-400">
                     <Upload className="size-4" /> Téléverser
-                    <input type="file" accept="image/png,image/jpeg" hidden onChange={(e) => uploadImage("logoUrl", e.target.files?.[0])} />
+                    <input type="file" accept="image/*" hidden onChange={(e) => { uploadImage("logoUrl", e.target.files?.[0]); e.currentTarget.value = ""; }} />
                   </label>
                   {form.logoUrl && (
                     <Button variant="ghost" size="sm" onClick={() => setForm((f) => ({ ...f, logoUrl: "" }))}>Retirer</Button>
@@ -216,13 +246,14 @@ export default function ParametresPage() {
                 <Label>Cachet / signature</Label>
                 <div className="flex items-center gap-3">
                   {form.stampUrl ? (
-                    <Image src={form.stampUrl} alt="cachet" width={64} height={64} unoptimized className="h-12 w-12 rounded border border-border bg-white object-contain p-1" />
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={form.stampUrl} alt="cachet" className="h-12 w-12 rounded border border-border bg-white object-contain p-1" />
                   ) : (
                     <div className="flex h-12 w-24 items-center justify-center rounded border border-dashed border-border text-[10px] text-muted-foreground">Aucun cachet</div>
                   )}
                   <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm font-medium hover:border-gold-400">
                     <Upload className="size-4" /> Téléverser
-                    <input type="file" accept="image/png,image/jpeg" hidden onChange={(e) => uploadImage("stampUrl", e.target.files?.[0])} />
+                    <input type="file" accept="image/*" hidden onChange={(e) => { uploadImage("stampUrl", e.target.files?.[0]); e.currentTarget.value = ""; }} />
                   </label>
                   {form.stampUrl && (
                     <Button variant="ghost" size="sm" onClick={() => setForm((f) => ({ ...f, stampUrl: "" }))}>Retirer</Button>
