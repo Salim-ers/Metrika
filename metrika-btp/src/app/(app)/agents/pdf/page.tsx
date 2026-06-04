@@ -157,7 +157,7 @@ export default function PdfAgentPage() {
   return (
     <div className="animate-fade-up">
       <PageHeader
-        eyebrow="Agent IA n°1"
+        eyebrow="Outils PDF"
         title="PDF &"
         accent="Images"
         description="Fusionnez, réorganisez et convertissez vos documents. Réorganisez l’ordre avant export."

@@ -1,6 +1,5 @@
-import { FileStack, FileText, Table2, ReceiptText, Bot, CheckCircle2, Clock } from "lucide-react";
+import { FileStack, FileText, Table2, ReceiptText, Activity, CheckCircle2, Clock, ArrowRight } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { ActivityChart } from "@/components/dashboard/activity-chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,19 +42,46 @@ export default async function DashboardPage() {
     { mois: "Avr", documents: 2 }, { mois: "Mai", documents: 5 }, { mois: "Juin", documents: d.docCount },
   ];
 
+  const actions = [
+    { href: "/devis", label: "Nouveau devis", primary: true },
+    { href: "/agents/cctp", label: "Générer un CCTP" },
+    { href: "/agents/dpgf", label: "DPGF" },
+    { href: "/agents/sous-detail", label: "Sous-détail" },
+    { href: "/agents/pdf", label: "PDF & Images" },
+  ];
+
   return (
     <div className="animate-fade-up">
-      <PageHeader
-        eyebrow="Pilotage"
-        title="Votre"
-        accent="tableau de bord."
-        description="Vue d’ensemble de votre activité documentaire BTP — synchronisée en temps réel."
-        action={
-          <div className="flex items-center gap-2 rounded-full border border-success/30 bg-success/10 px-3 py-1.5 text-xs font-medium text-success">
-            <span className="size-2 rounded-full bg-success" /> Synchro temps réel
+      {/* Hero d'accueil */}
+      <div className="relative mb-8 overflow-hidden rounded-2xl bg-gradient-to-br from-navy-950 via-navy-900 to-navy-800 p-8 text-white shadow-card sm:p-10">
+        <div className="pointer-events-none absolute -right-16 -top-16 size-64 rounded-full bg-gold-500/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-20 right-1/3 size-56 rounded-full bg-gold-400/10 blur-3xl" />
+        <div className="relative max-w-2xl">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-300">Metrika · Métrage & Chiffrage BTP</p>
+          <h1 className="mt-3 font-display text-3xl font-semibold leading-tight sm:text-4xl">
+            Bonjour, prêt à <span className="italic text-gold-400">chiffrer</span> ?
+          </h1>
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-navy-100/70">
+            Pilotez vos cahiers techniques, décompositions de prix, sous-détails et devis —
+            du métré au document officiel, aux couleurs de votre entreprise.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-2.5">
+            {actions.map((a) => (
+              <Link
+                key={a.href}
+                href={a.href}
+                className={
+                  a.primary
+                    ? "inline-flex items-center gap-1.5 rounded-lg bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-900 transition-colors hover:bg-gold-400"
+                    : "inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-white/90 transition-colors hover:border-gold-400/50 hover:bg-white/10"
+                }
+              >
+                {a.label} {a.primary && <ArrowRight className="size-4" />}
+              </Link>
+            ))}
           </div>
-        }
-      />
+        </div>
+      </div>
 
       {!d.ok && (
         <Card className="mb-6 border-warning/40 bg-warning/5">
@@ -78,7 +104,7 @@ export default async function DashboardPage() {
           <CardHeader className="flex-row items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2 text-navy-900">
-                <Bot className="size-4 text-gold-500" /> Activité documentaire
+                <Activity className="size-4 text-gold-500" /> Activité documentaire
               </CardTitle>
               <p className="text-xs text-muted-foreground">6 derniers mois</p>
             </div>
@@ -121,13 +147,13 @@ export default async function DashboardPage() {
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle className="text-navy-900">Derniers documents</CardTitle>
           <Button variant="outline" size="sm" asChild>
-            <Link href="/agents">Tous les agents</Link>
+            <Link href="/agents">Tous les outils</Link>
           </Button>
         </CardHeader>
         <CardContent>
           {d.recentDocs.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              Aucun document pour l’instant. Commencez avec un agent IA.
+              Aucun document pour l’instant. Commencez par créer un devis ou un CCTP.
             </p>
           ) : (
             <div className="divide-y divide-border">

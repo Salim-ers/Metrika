@@ -41,11 +41,11 @@ export default function LoginPage() {
         <div className="relative max-w-md">
           <h1 className="font-display text-4xl font-semibold leading-tight">
             Vos documents BTP,
-            <span className="italic text-gold-400"> pilotés par l’IA.</span>
+            <span className="italic text-gold-400"> du métré au devis.</span>
           </h1>
           <p className="mt-4 text-sm leading-relaxed text-navy-100/70">
             CCTP, DPGF, sous-détails de prix, bibliothèque de prix et devis —
-            une plateforme privée, sobre et automatisée, pensée pour le BTP au Maroc.
+            une plateforme privée et soignée pour le métrage et le chiffrage BTP.
           </p>
         </div>
         <div className="premium-divider relative h-px w-full" />

@@ -85,10 +85,10 @@ export default function DpgfPage() {
   return (
     <div className="animate-fade-up">
       <PageHeader
-        eyebrow="Agent IA n°3"
+        eyebrow="Décomposition de prix"
         title="Conversion"
         accent="CCTP → DPGF"
-        description="L’IA extrait les ouvrages et propose des quantités. Chaque ligne doit être validée par vous."
+        description="Extraction des ouvrages et proposition de quantités. Chaque ligne doit être validée par vous avant export."
       />
 
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
@@ -99,7 +99,7 @@ export default function DpgfPage() {
               <Label>CCTP en PDF</Label>
               <PdfDropzone
                 title="Glissez le(s) CCTP en PDF ici ou cliquez"
-                hint="Lu directement par l’IA (texte + tableaux)"
+                hint="Lu automatiquement (texte + tableaux)"
                 onFiles={(list) => setCctpFiles((p) => [...p, ...list])}
               />
               {cctpFiles.length > 0 && (

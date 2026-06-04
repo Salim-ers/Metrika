@@ -91,7 +91,7 @@ export default function CctpPage() {
   return (
     <div className="animate-fade-up">
       <PageHeader
-        eyebrow="Agent IA n°2"
+        eyebrow="Cahier des charges"
         title="Générateur de"
         accent="CCTP"
         description="Sélectionnez les lots, générez un CCTP structuré, modifiez-le, puis validez avant export."
@@ -157,7 +157,7 @@ export default function CctpPage() {
               <Label>Plans du projet (PDF, optionnel)</Label>
               <PdfDropzone
                 title="Glissez vos plans PDF ici ou cliquez"
-                hint="Claude lit les plans pour adapter le CCTP"
+                hint="Plans lus automatiquement pour adapter le CCTP"
                 onFiles={(list) => setPlanFiles((p) => [...p, ...list])}
               />
               {planFiles.length > 0 && (
@@ -202,7 +202,7 @@ export default function CctpPage() {
                 <Card className="border-navy-100 bg-navy-50/40">
                   <CardHeader className="flex-row items-center gap-2">
                     <ScanText className="size-4 text-navy-600" />
-                    <CardTitle className="text-sm text-navy-900">Synthèse des plans (lue par l’IA)</CardTitle>
+                    <CardTitle className="text-sm text-navy-900">Synthèse des plans</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <pre className="max-h-56 overflow-auto whitespace-pre-wrap font-sans text-xs leading-relaxed text-navy-700">{planContext}</pre>

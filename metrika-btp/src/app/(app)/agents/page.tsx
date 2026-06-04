@@ -15,10 +15,10 @@ export default function AgentsPage() {
   return (
     <div className="animate-fade-up">
       <PageHeader
-        eyebrow="Agents IA"
-        title="Vos agents"
+        eyebrow="Outils documentaires"
+        title="Vos outils"
         accent="documentaires."
-        description="Quatre agents spécialisés pilotent l’ensemble de votre chaîne documentaire BTP."
+        description="Quatre outils spécialisés couvrent toute votre chaîne documentaire BTP, du métré au devis."
       />
       <div className="grid gap-5 sm:grid-cols-2">
         {AGENTS.map((a) => {
@@ -32,7 +32,7 @@ export default function AgentsPage() {
                   </span>
                   <Badge variant={a.variant}>{a.status}</Badge>
                 </div>
-                <p className="mt-4 text-[11px] font-semibold uppercase tracking-wider text-gold-600">Agent {a.n}</p>
+                <p className="mt-4 text-[11px] font-semibold uppercase tracking-wider text-gold-600">Outil {a.n}</p>
                 <h3 className="mt-1 font-display text-xl font-semibold text-navy-900">{a.title}</h3>
                 <p className="mt-2 text-sm text-muted-foreground">{a.desc}</p>
               </Card>

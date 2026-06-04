@@ -126,10 +126,10 @@ export default function SousDetailPage() {
   return (
     <div className="animate-fade-up">
       <PageHeader
-        eyebrow="Agent IA n°4"
+        eyebrow="Étude de prix"
         title="Sous-détail"
         accent="de prix"
-        description="L’IA décompose un ouvrage en main-d’œuvre, matériaux et matériel. Vérifiez chaque poste avant d’exporter."
+        description="Décomposition d’un ouvrage en main-d’œuvre, matériaux et matériel. Vérifiez chaque poste avant d’exporter."
       />
 
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
@@ -150,7 +150,7 @@ export default function SousDetailPage() {
               <Label>…ou joindre un PDF de l’ouvrage (optionnel)</Label>
               <PdfDropzone
                 title="Glissez un PDF ici ou cliquez (descriptif, extrait CCTP…)"
-                hint="Lu par l’IA pour décomposer l’ouvrage"
+                hint="Lu pour décomposer l’ouvrage"
                 onFiles={(list) => setFiles((p) => [...p, ...list])}
               />
               {files.length > 0 && (

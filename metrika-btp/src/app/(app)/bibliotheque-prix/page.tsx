@@ -146,9 +146,9 @@ export default function BibliothequePrixPage() {
         unitPrice: data.unitPrice ?? f.unitPrice,
         marginRate: data.marginRate ?? f.marginRate,
         generalFeesRate: data.generalFeesRate ?? f.generalFeesRate,
-        source: `IA · ${data.confidence ?? "estimation"}`,
+        source: `Estimation · ${data.confidence ?? "estimation"}`,
       }));
-      toast.success("Prix proposé par l’IA. Ajustez si besoin.");
+      toast.success("Prix estimé proposé. Ajustez si besoin.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erreur");
     } finally {
@@ -162,7 +162,7 @@ export default function BibliothequePrixPage() {
         eyebrow="Production"
         title="Bibliothèque"
         accent="de prix"
-        description="Référentiel de prix unitaires alimentant les DPGF, sous-détails et devis. L’IA peut proposer des prix adaptés au marché marocain."
+        description="Référentiel de prix unitaires alimentant les DPGF, sous-détails et devis, avec proposition de prix de référence adaptés au marché."
         action={
           <div className="flex gap-2">
             <input ref={fileRef} type="file" accept=".xlsx,.xls" hidden onChange={(e) => { importExcel(e.target.files?.[0]); e.currentTarget.value = ""; }} />
@@ -221,7 +221,7 @@ export default function BibliothequePrixPage() {
               </div>
               <Button variant="outline" disabled={suggesting} onClick={suggest}>
                 {suggesting ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-                Proposer par IA
+                Proposer un prix
               </Button>
               <Button variant="ghost" onClick={() => { setShowForm(false); setForm(emptyForm); }}>Annuler</Button>
               <Button variant="gold" onClick={addItem}>Enregistrer</Button>
