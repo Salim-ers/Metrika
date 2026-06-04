@@ -102,9 +102,11 @@ export async function exportSousDetailPdf(d: SousDetailExport): Promise<void> {
   };
   const totalLine = (label: string, val: number) => {
     k.ensure(24);
-    k.y -= 15; // descend sous la dernière ligne du tableau (évite le chevauchement)
+    k.y -= 15; // descend sous la dernière ligne du tableau (évite le chevauchement vertical)
     k.page.drawRectangle({ x: M, y: k.y - 5, width: W - 2 * M, height: 18, color: C.ZEBRA });
-    k.text(label, puR, k.y, { size: 8.5, bold: true, color: C.NAVY, align: "right" });
+    // Libellé ancré à gauche du bloc des montants : laisse un espace franc avant le total,
+    // quelle que soit la largeur du montant (évite le chevauchement horizontal).
+    k.text(label, qtR, k.y, { size: 8.5, bold: true, color: C.NAVY, align: "right" });
     k.text(fmtMad(val) + " " + unit, totR, k.y, { size: 9, bold: true, align: "right" });
     k.y -= 12;
   };
