@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { generateCctp, analyzePlans, type PlanImage } from "@/services/cctp.service";
+import { imagePayloadError } from "@/lib/upload-guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -13,8 +14,10 @@ export async function POST(req: NextRequest) {
   if (!Array.isArray(lots) || lots.length === 0) {
     return NextResponse.json({ error: "Sélectionnez au moins un lot." }, { status: 400 });
   }
+  const images: PlanImage[] = Array.isArray(planImages) ? planImages : [];
+  const tooBig = imagePayloadError(images);
+  if (tooBig) return NextResponse.json({ error: tooBig }, { status: 413 });
   try {
-    const images: PlanImage[] = Array.isArray(planImages) ? planImages : [];
     const planContext = await analyzePlans(images);
     const sections = await generateCctp({ lots, projectType, context, planContext });
     return NextResponse.json({ sections, planContext });

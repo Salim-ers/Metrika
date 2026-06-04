@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { imagesToPdf } from "@/services/pdf.service";
+import { validateUploads, safeJsonParse } from "@/lib/upload-guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -11,11 +12,10 @@ export async function POST(req: NextRequest) {
 
   const form = await req.formData();
   const files = form.getAll("files") as File[];
-  const order = JSON.parse((form.get("order") as string) || "[]") as number[];
+  const order = safeJsonParse<number[]>(form.get("order") as string, []);
 
-  if (files.length < 1) {
-    return NextResponse.json({ error: "Aucune image fournie." }, { status: 400 });
-  }
+  const err = validateUploads(files, { allowed: ["image/"] });
+  if (err) return NextResponse.json({ error: err }, { status: 400 });
   const ordered = order.length === files.length ? order.map((i) => files[i]) : files;
   const loaded = await Promise.all(
     ordered.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) }))
