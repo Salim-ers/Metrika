@@ -100,4 +100,21 @@
   .premium-divider {
     background: linear-gradient(90deg, transparent, hsl(var(--accent) / 0.6), transparent);
   }
+
+  /* Fond bleu marine « marque » (cf. visuel logo) : navy profond + halo doux.
+     Si une image est déposée dans public/brand/auth-bg.jpg, elle est utilisée
+     en superposition via .bg-metrika-deep--image. */
+  .bg-metrika-deep {
+    background-color: #0a1830;
+    background-image:
+      radial-gradient(ellipse 75% 55% at 50% 40%, rgba(46, 78, 130, 0.55) 0%, rgba(10, 24, 48, 0) 60%),
+      linear-gradient(160deg, #0d1f3c 0%, #0a1830 55%, #081227 100%);
+  }
+  .bg-metrika-deep--image {
+    background-color: #0a1830;
+    background-image: url("/brand/auth-bg.jpg");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
 }

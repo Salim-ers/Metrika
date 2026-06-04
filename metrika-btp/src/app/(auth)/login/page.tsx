@@ -52,10 +52,9 @@ export default function LoginPage() {
   return (
     <div ref={root} className="grid min-h-screen lg:grid-cols-2">
       {/* ── Panneau marine animé ── */}
-      <div className="relative hidden flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-navy-950 via-navy-900 to-navy-950 p-12 text-white lg:flex">
-        <div className="absolute inset-0 bg-navy-grain opacity-60" />
-        <div className="glow-1 pointer-events-none absolute -top-12 left-1/4 size-80 rounded-full bg-gold-500/25 blur-3xl" />
-        <div className="glow-2 pointer-events-none absolute -bottom-16 right-1/4 size-96 rounded-full bg-gold-400/10 blur-3xl" />
+      <div className="bg-metrika-deep relative hidden flex-col items-center justify-center overflow-hidden p-12 text-white lg:flex">
+        <div className="glow-1 pointer-events-none absolute -top-16 left-1/3 size-80 rounded-full bg-gold-500/10 blur-3xl" />
+        <div className="glow-2 pointer-events-none absolute -bottom-20 right-1/3 size-96 rounded-full bg-navy-400/10 blur-3xl" />
 
         <div className="relative flex flex-col items-center text-center">
           <div className="anim-brand">

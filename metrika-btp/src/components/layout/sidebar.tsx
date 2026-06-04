@@ -17,7 +17,7 @@ export function Sidebar() {
     .sort((a, b) => b.length - a.length)[0];
 
   return (
-    <aside className="hidden w-[264px] shrink-0 flex-col bg-sidebar text-sidebar-foreground lg:flex">
+    <aside className="bg-metrika-deep hidden w-[264px] shrink-0 flex-col text-sidebar-foreground lg:flex">
       <div className="flex h-[72px] items-center border-b border-sidebar-border px-6">
         <MetrikaLogo variant="light" />
       </div>
