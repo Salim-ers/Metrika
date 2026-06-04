@@ -1,6 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
+import { AnimatedNumber } from "./animated-number";
 
 export function StatCard({
   label, value, sub, icon: Icon, accent,
@@ -21,7 +22,9 @@ export function StatCard({
           <Icon className="size-4" />
         </span>
       </div>
-      <p className="kpi-number mt-4 text-4xl text-navy-900">{value}</p>
+      <p className="kpi-number mt-4 text-4xl text-navy-900">
+        {typeof value === "number" ? <AnimatedNumber value={value} /> : value}
+      </p>
       {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
       <div className={cn("absolute inset-x-0 bottom-0 h-0.5 origin-left scale-x-0 transition-transform duration-500 group-hover:scale-x-100", accent ? "bg-gold-500" : "bg-navy-600")} />
     </Card>
