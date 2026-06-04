@@ -5,22 +5,31 @@ import { cn } from "@/lib/utils";
  * aux couleurs de marque. `variant` adapte la couleur du texte
  * pour fond clair ou fond marine (sidebar).
  */
+const SIZES = {
+  sm: { gap: "gap-3", svg: "h-9", name: "text-xl", sub: "text-[10px]", subGap: "mt-0.5" },
+  lg: { gap: "gap-4", svg: "h-16", name: "text-3xl", sub: "text-xs", subGap: "mt-1" },
+  xl: { gap: "gap-5", svg: "h-28", name: "text-5xl", sub: "text-sm", subGap: "mt-1.5" },
+} as const;
+
 export function MetrikaLogo({
   className,
   variant = "dark",
   showText = true,
+  size = "sm",
 }: {
   className?: string;
   variant?: "dark" | "light";
   showText?: boolean;
+  size?: keyof typeof SIZES;
 }) {
   const navy = variant === "light" ? "#FFFFFF" : "#14233F";
   const navySub = variant === "light" ? "#FFFFFF" : "#0A1A35";
   const gold = "#E1A532";
+  const s = SIZES[size];
 
   return (
-    <div className={cn("flex items-center gap-3", className)}>
-      <svg viewBox="0 0 120 130" className="h-9 w-auto shrink-0" aria-hidden>
+    <div className={cn("flex items-center", s.gap, className)}>
+      <svg viewBox="0 0 120 130" className={cn(s.svg, "w-auto shrink-0")} aria-hidden>
         {/* règle graduée dorée */}
         <path d="M14 40 V112 H40" fill="none" stroke={gold} strokeWidth="5" />
         {[52, 64, 76, 88, 100].map((y) => (
@@ -38,10 +47,10 @@ export function MetrikaLogo({
 
       {showText && (
         <div className="leading-none">
-          <div className="font-display text-xl font-bold tracking-tight" style={{ color: navy }}>
+          <div className={cn("font-display font-bold tracking-tight", s.name)} style={{ color: navy }}>
             METRIKA
           </div>
-          <div className="mt-0.5 text-[10px] font-semibold tracking-[0.18em]" style={{ color: gold }}>
+          <div className={cn("font-semibold tracking-[0.18em]", s.sub, s.subGap)} style={{ color: gold }}>
             MÉTRAGE BTP
             <span className="ml-1.5" style={{ color: variant === "light" ? "#9fb0cc" : "#33497f" }}>
               MAROC
