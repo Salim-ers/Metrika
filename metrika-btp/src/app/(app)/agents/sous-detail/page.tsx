@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,7 +13,7 @@ import { formatMoney } from "@/lib/utils";
 import { LOTS_BTP, UNITS } from "@/lib/constants";
 import { PdfDropzone } from "@/components/ui/pdf-dropzone";
 import { getCompany } from "@/lib/client-data";
-import { useCurrency } from "@/lib/use-currency";
+import { useCurrency, convertAmount } from "@/lib/use-currency";
 import { Loader2, Calculator, FileDown, Sparkles, Trash2, Plus, CheckCircle2, FileText, X } from "lucide-react";
 
 type CompType = "MAIN_OEUVRE" | "MATERIAUX" | "MATERIEL";
@@ -49,10 +49,20 @@ export default function SousDetailPage() {
   const [generalFeesRate, setGeneralFeesRate] = useState(0.1);
   const [profitRate, setProfitRate] = useState(0.1);
   const [company, setCompany] = useState<Record<string, unknown> | null>(null);
-  const { currency } = useCurrency();
+  const { currency, rate } = useCurrency();
   const money = (n: number) => formatMoney(n, currency);
 
   useEffect(() => { getCompany().then(setCompany); }, []);
+
+  // Conversion des coûts unitaires au changement de devise (switch topbar).
+  const prevCurrency = useRef(currency);
+  useEffect(() => {
+    if (prevCurrency.current !== currency) {
+      const from = prevCurrency.current;
+      setComponents((arr) => arr.map((c) => ({ ...c, unitCost: convertAmount(c.unitCost, from, currency, rate) })));
+      prevCurrency.current = currency;
+    }
+  }, [currency, rate]);
 
   async function exportSd(kind: "excel" | "pdf") {
     try {

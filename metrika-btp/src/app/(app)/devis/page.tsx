@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { MetrikaLogo } from "@/components/layout/metrika-logo";
 import { formatMoney, formatDate, buildQuoteNumber } from "@/lib/utils";
 import { getCompany, getPrices } from "@/lib/client-data";
-import { useCurrency } from "@/lib/use-currency";
+import { useCurrency, convertAmount } from "@/lib/use-currency";
 import { UNITS } from "@/lib/constants";
 import { Plus, Trash2, FileDown, CheckCircle2, ReceiptText, Library, Upload, Loader2, Search, Copy, ChevronDown } from "lucide-react";
 
@@ -47,9 +47,19 @@ export default function DevisPage() {
     getCompany().then(setCompany);
   }, []);
 
-  const { currency } = useCurrency();
+  const { currency, rate } = useCurrency();
   const vatRate = Number(company?.vatRate) || VAT_RATE;
   const money = (n: number) => formatMoney(n, currency);
+
+  // Convertit les prix unitaires lors d'un changement de devise (switch topbar).
+  const prevCurrency = useRef(currency);
+  useEffect(() => {
+    if (prevCurrency.current !== currency) {
+      const from = prevCurrency.current;
+      setLines((arr) => arr.map((l) => ({ ...l, unitPrice: convertAmount(l.unitPrice, from, currency, rate) })));
+      prevCurrency.current = currency;
+    }
+  }, [currency, rate]);
 
   // ── Bibliothèque de prix : recherche / filtre / ajout en masse ──
   const [showLibrary, setShowLibrary] = useState(false);

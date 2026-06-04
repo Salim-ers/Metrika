@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { formatMoney } from "@/lib/utils";
 import { UNITS, LOTS_BTP } from "@/lib/constants";
-import { useCurrency } from "@/lib/use-currency";
+import { useCurrency, convertAmount } from "@/lib/use-currency";
 import { PdfDropzone } from "@/components/ui/pdf-dropzone";
 import { getCompany } from "@/lib/client-data";
 import { Loader2, Table2, CheckCircle2, FileDown, Sparkles, FileText, X, Plus, Trash2 } from "lucide-react";
@@ -26,7 +26,7 @@ const emptyLine = (): Line => ({
 });
 
 export default function DpgfPage() {
-  const { currency } = useCurrency();
+  const { currency, rate } = useCurrency();
   const money = (n: number) => formatMoney(n, currency);
 
   const [cctpText, setCctpText] = useState("");
@@ -38,6 +38,16 @@ export default function DpgfPage() {
   const [company, setCompany] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => { getCompany().then(setCompany); }, []);
+
+  // Conversion des prix unitaires au changement de devise (switch topbar).
+  const prevCurrency = useRef(currency);
+  useEffect(() => {
+    if (prevCurrency.current !== currency) {
+      const from = prevCurrency.current;
+      setLines((arr) => arr.map((l) => ({ ...l, unitPrice: convertAmount(l.unitPrice, from, currency, rate) })));
+      prevCurrency.current = currency;
+    }
+  }, [currency, rate]);
 
   async function convert() {
     if (!cctpText.trim() && cctpFiles.length === 0) {
