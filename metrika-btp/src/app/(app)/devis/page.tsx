@@ -11,8 +11,9 @@ import { Badge } from "@/components/ui/badge";
 import { MetrikaLogo } from "@/components/layout/metrika-logo";
 import { formatMoney, formatDate, buildQuoteNumber } from "@/lib/utils";
 import { getCompany, getPrices } from "@/lib/client-data";
+import { useCurrency } from "@/lib/use-currency";
 import { UNITS } from "@/lib/constants";
-import { Plus, Trash2, FileDown, CheckCircle2, ReceiptText, Library, Upload, Loader2 } from "lucide-react";
+import { Plus, Trash2, FileDown, CheckCircle2, ReceiptText, Library, Upload, Loader2, Search, Copy, ChevronDown } from "lucide-react";
 
 interface Line {
   designation: string;
@@ -46,14 +47,67 @@ export default function DevisPage() {
     getCompany().then(setCompany);
   }, []);
 
-  const currency = (company?.currency as string) || "MAD";
+  const { currency } = useCurrency();
   const vatRate = Number(company?.vatRate) || VAT_RATE;
   const money = (n: number) => formatMoney(n, currency);
+
+  // ── Bibliothèque de prix : recherche / filtre / ajout en masse ──
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [librarySearch, setLibrarySearch] = useState("");
+  const [libraryCat, setLibraryCat] = useState("");
+  const [selectedLib, setSelectedLib] = useState<Set<string>>(new Set());
+
+  const categories = Array.from(
+    new Set(prices.map((p) => p.category || p.lot).filter(Boolean) as string[]),
+  ).sort();
+
+  const filteredPrices = prices.filter((p) => {
+    const cat = p.category || p.lot || "";
+    if (libraryCat && cat !== libraryCat) return false;
+    if (!librarySearch.trim()) return true;
+    const q = librarySearch.toLowerCase();
+    return (
+      p.designation.toLowerCase().includes(q) ||
+      cat.toLowerCase().includes(q) ||
+      p.unit.toLowerCase().includes(q)
+    );
+  });
+
+  function lineFromPrice(p: PriceItem): Line {
+    return { designation: p.designation, unit: p.unit, quantity: 1, unitPrice: p.sellingPrice };
+  }
+  function addFromLibrary(p: PriceItem) {
+    setLines((arr) => [...arr.filter((l) => l.designation.trim() || l.unitPrice > 0), lineFromPrice(p)]);
+    setValidated(false);
+  }
+  function toggleLibSelect(id: string) {
+    setSelectedLib((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  }
+  function addSelectedLibrary() {
+    const chosen = prices.filter((p) => selectedLib.has(p.id));
+    if (chosen.length === 0) return;
+    setLines((arr) => [...arr.filter((l) => l.designation.trim() || l.unitPrice > 0), ...chosen.map(lineFromPrice)]);
+    setSelectedLib(new Set());
+    setValidated(false);
+    toast.success(`${chosen.length} ligne(s) ajoutée(s) depuis la bibliothèque.`);
+  }
 
   function pickFromLibrary(i: number, priceId: string) {
     const p = prices.find((x) => x.id === priceId);
     if (!p) return;
     update(i, { designation: p.designation, unit: p.unit, unitPrice: p.sellingPrice });
+  }
+  function duplicate(i: number) {
+    setLines((arr) => {
+      const copy = [...arr];
+      copy.splice(i + 1, 0, { ...arr[i] });
+      return copy;
+    });
+    setValidated(false);
   }
 
   const [importing, setImporting] = useState(false);
@@ -61,10 +115,10 @@ export default function DevisPage() {
     if (!file) return;
     setImporting(true);
     try {
-      const { rasterizePdf } = await import("@/lib/pdf-render");
-      const images = await rasterizePdf(file);
-      const totalChars = images.reduce((n, im) => n + im.data.length, 0);
-      if (totalChars > 3_800_000) { toast.error("PDF trop volumineux. Réduisez le nombre de pages."); return; }
+      const { rasterizePdfBudgeted } = await import("@/lib/pdf-render");
+      const { images, pagesSkipped } = await rasterizePdfBudgeted(file);
+      if (images.length === 0) { toast.error("PDF illisible ou vide."); return; }
+      if (pagesSkipped > 0) toast.warning(`${pagesSkipped} page(s) ignorée(s) (PDF volumineux).`);
       const res = await fetch("/api/devis/extract", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ images }),
       });
@@ -119,7 +173,8 @@ export default function DevisPage() {
         clientAddress,
         projectName,
         lines,
-        company: fresh as never,
+        // La devise globale (switch topbar) prime sur celle de la fiche société.
+        company: { ...(fresh as object), currency } as never,
       };
       if (kind === "pdf") await m.exportDevisPdf(data);
       else if (kind === "excel") await m.exportDevisExcel(data);
@@ -134,8 +189,8 @@ export default function DevisPage() {
     <div className="animate-fade-up">
       <PageHeader
         eyebrow="Production"
-        title="Générateur"
-        accent="de devis"
+        title="Devis"
+        accent="premium"
         description="Composez un devis premium aux couleurs Metrika. Vérifiez l’aperçu avant d’éditer le document officiel."
       />
 
@@ -163,6 +218,83 @@ export default function DevisPage() {
               </div>
             </CardContent>
           </Card>
+
+          {prices.length > 0 && (
+            <Card className="overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowLibrary((v) => !v)}
+                className="flex w-full items-center justify-between gap-3 px-6 py-4 text-left transition-colors hover:bg-muted/30"
+              >
+                <span className="flex items-center gap-2 font-semibold text-navy-900">
+                  <Library className="size-4 text-gold-600" />
+                  Bibliothèque de prix
+                  <Badge variant="muted">{prices.length}</Badge>
+                </span>
+                <ChevronDown className={`size-4 text-muted-foreground transition-transform ${showLibrary ? "rotate-180" : ""}`} />
+              </button>
+              {showLibrary && (
+                <CardContent className="space-y-3 border-t border-border/60 pt-4">
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <div className="relative flex-1">
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        value={librarySearch}
+                        onChange={(e) => setLibrarySearch(e.target.value)}
+                        placeholder="Rechercher un ouvrage, une unité…"
+                        className="pl-8"
+                      />
+                    </div>
+                    {categories.length > 0 && (
+                      <select
+                        value={libraryCat}
+                        onChange={(e) => setLibraryCat(e.target.value)}
+                        className="h-10 rounded-md border border-input bg-card px-2 text-sm sm:w-48"
+                      >
+                        <option value="">Toutes catégories</option>
+                        {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    )}
+                  </div>
+
+                  <div className="max-h-72 space-y-1 overflow-y-auto rounded-md border border-border/60 p-1">
+                    {filteredPrices.length === 0 ? (
+                      <p className="px-2 py-6 text-center text-xs text-muted-foreground">Aucun prix ne correspond.</p>
+                    ) : (
+                      filteredPrices.map((p) => (
+                        <div key={p.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/40">
+                          <input
+                            type="checkbox"
+                            checked={selectedLib.has(p.id)}
+                            onChange={() => toggleLibSelect(p.id)}
+                            className="size-4 shrink-0 accent-gold-500"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm text-navy-800">{p.designation}</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              {(p.category || p.lot) ? `${p.category || p.lot} · ` : ""}{money(p.sellingPrice)}/{p.unit}
+                            </p>
+                          </div>
+                          <Button variant="ghost" size="sm" className="shrink-0" onClick={() => addFromLibrary(p)}>
+                            <Plus className="size-4" /> Ajouter
+                          </Button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      {filteredPrices.length} résultat(s){selectedLib.size > 0 ? ` · ${selectedLib.size} sélectionné(s)` : ""}
+                    </p>
+                    <Button variant="gold" size="sm" disabled={selectedLib.size === 0} onClick={addSelectedLibrary}>
+                      <Plus className="size-4" /> Ajouter la sélection
+                    </Button>
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+          )}
 
           <Card>
             <CardHeader className="flex-row items-center justify-between">
@@ -202,6 +334,9 @@ export default function DevisPage() {
                       placeholder="Désignation de l’ouvrage (ou choisir ci-dessus)"
                       className="flex-1"
                     />
+                    <button onClick={() => duplicate(i)} title="Dupliquer" className="mt-2">
+                      <Copy className="size-4 text-muted-foreground/50 hover:text-gold-600" />
+                    </button>
                     <button onClick={() => remove(i)} title="Supprimer" className="mt-2">
                       <Trash2 className="size-4 text-muted-foreground/50 hover:text-destructive" />
                     </button>
@@ -218,7 +353,7 @@ export default function DevisPage() {
                       <Input type="number" value={l.quantity} onChange={(e) => update(i, { quantity: +e.target.value })} className="h-9" />
                     </div>
                     <div>
-                      <Label className="text-[11px] text-muted-foreground">P.U. (MAD)</Label>
+                      <Label className="text-[11px] text-muted-foreground">P.U. ({currency === "EUR" ? "€" : "MAD"})</Label>
                       <Input type="number" value={l.unitPrice} onChange={(e) => update(i, { unitPrice: +e.target.value })} className="h-9" />
                     </div>
                   </div>

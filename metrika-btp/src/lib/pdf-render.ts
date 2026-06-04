@@ -65,6 +65,64 @@ export async function rasterizePdf(
   return out;
 }
 
+export interface BudgetedResult {
+  images: PlanImage[];
+  /** Pages effectivement rendues (≤ pages du PDF). */
+  pagesRendered: number;
+  /** Pages du PDF non traitées (au-delà de la limite). */
+  pagesSkipped: number;
+  /** Taille approximative du payload base64 (octets). */
+  payloadChars: number;
+}
+
+/**
+ * Rastérise un PDF en restant SOUS un budget de payload (limite API ~4,5 Mo).
+ * Au lieu d'échouer sur un gros PDF, on réduit automatiquement la qualité puis
+ * la résolution jusqu'à tenir dans le budget, et on tronque le nombre de pages
+ * en dernier recours (en signalant combien ont été ignorées). Corrige le
+ * "PDF trop volumineux" en dégradant proprement plutôt qu'en bloquant.
+ */
+export async function rasterizePdfBudgeted(
+  file: File,
+  opts?: { budgetChars?: number; maxPages?: number },
+): Promise<BudgetedResult> {
+  const budget = opts?.budgetChars ?? 3_600_000;
+  const hardMaxPages = opts?.maxPages ?? 40;
+
+  // Paliers de dégradation : on tente le plus net, puis on baisse.
+  const tiers: { maxDim: number; quality: number }[] = [
+    { maxDim: 1500, quality: 0.68 },
+    { maxDim: 1300, quality: 0.6 },
+    { maxDim: 1100, quality: 0.52 },
+    { maxDim: 950, quality: 0.45 },
+  ];
+
+  let last: PlanImage[] = [];
+  for (const tier of tiers) {
+    const imgs = await rasterizePdf(file, { ...tier, maxPages: hardMaxPages });
+    const total = imgs.reduce((n, im) => n + im.data.length, 0);
+    last = imgs;
+    if (total <= budget) {
+      return { images: imgs, pagesRendered: imgs.length, pagesSkipped: 0, payloadChars: total };
+    }
+  }
+
+  // Toujours trop gros au palier le plus bas : on tronque page par page.
+  const kept: PlanImage[] = [];
+  let acc = 0;
+  for (const im of last) {
+    if (acc + im.data.length > budget) break;
+    kept.push(im);
+    acc += im.data.length;
+  }
+  return {
+    images: kept,
+    pagesRendered: kept.length,
+    pagesSkipped: last.length - kept.length,
+    payloadChars: acc,
+  };
+}
+
 /** Extrait le texte d'un PDF (PDF "textuel" ; un PDF scanné renverra peu/pas de texte). */
 export async function extractPdfText(file: File): Promise<string> {
   const data = new Uint8Array(await file.arrayBuffer());

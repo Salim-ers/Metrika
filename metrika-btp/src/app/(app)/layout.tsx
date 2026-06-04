@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
+import { RouteTransition } from "@/components/layout/route-transition";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -7,7 +8,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar />
-        <main className="flex-1 px-6 py-8 lg:px-10">{children}</main>
+        <main className="flex-1 px-6 py-8 lg:px-10">
+          <RouteTransition>{children}</RouteTransition>
+        </main>
       </div>
     </div>
   );

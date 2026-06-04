@@ -23,5 +23,9 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|brand|.*\\.png$).*)"],
+  // N'exécute l'auth Edge que sur les vraies navigations / API : on exclut
+  // tous les assets statiques (images, polices, etc.) pour alléger le routing.
+  matcher: [
+    "/((?!_next/static|_next/image|_next/data|favicon.ico|brand|.*\\.(?:png|jpg|jpeg|gif|webp|svg|ico|woff2?|ttf|otf|map)$).*)",
+  ],
 };

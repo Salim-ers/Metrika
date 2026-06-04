@@ -9,10 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { formatMAD } from "@/lib/utils";
+import { formatMoney } from "@/lib/utils";
 import { LOTS_BTP, UNITS } from "@/lib/constants";
 import { PdfDropzone } from "@/components/ui/pdf-dropzone";
 import { getCompany } from "@/lib/client-data";
+import { useCurrency } from "@/lib/use-currency";
 import { Loader2, Calculator, FileDown, Sparkles, Trash2, Plus, CheckCircle2, FileText, X } from "lucide-react";
 
 type CompType = "MAIN_OEUVRE" | "MATERIAUX" | "MATERIEL";
@@ -48,6 +49,8 @@ export default function SousDetailPage() {
   const [generalFeesRate, setGeneralFeesRate] = useState(0.1);
   const [profitRate, setProfitRate] = useState(0.1);
   const [company, setCompany] = useState<Record<string, unknown> | null>(null);
+  const { currency } = useCurrency();
+  const money = (n: number) => formatMoney(n, currency);
 
   useEffect(() => { getCompany().then(setCompany); }, []);
 
@@ -56,7 +59,7 @@ export default function SousDetailPage() {
       const fresh = await getCompany(true); // logo/cachet toujours à jour
       setCompany(fresh);
       const m = await import("@/lib/export-sous-detail");
-      const data = { designation, unit, lot, yield: yieldVal, generalFeesRate, profitRate, components, company: fresh as never };
+      const data = { designation, unit, lot, yield: yieldVal, generalFeesRate, profitRate, components, company: { ...(fresh as object), currency } as never };
       if (kind === "excel") await m.exportSousDetailExcel(data);
       else await m.exportSousDetailPdf(data);
       toast.success("Export généré.");
@@ -326,7 +329,7 @@ export default function SousDetailPage() {
                                   />
                                 </td>
                                 <td className="px-2 py-1.5 text-right font-medium text-navy-900">
-                                  {formatMAD(c.quantity * c.unitCost)}
+                                  {money(c.quantity * c.unitCost)}
                                 </td>
                                 <td className="pl-2 py-1.5 text-right">
                                   <button onClick={() => remove(idx)} title="Supprimer">
@@ -347,19 +350,19 @@ export default function SousDetailPage() {
                 <div className="space-y-1.5 text-sm">
                   <div className="flex justify-between text-muted-foreground">
                     <span>Déboursé sec</span>
-                    <span className="font-medium text-navy-800">{formatMAD(debourseSec)}</span>
+                    <span className="font-medium text-navy-800">{money(debourseSec)}</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Frais généraux ({Math.round(generalFeesRate * 100)} %)</span>
-                    <span>{formatMAD(debourseSec * generalFeesRate)}</span>
+                    <span>{money(debourseSec * generalFeesRate)}</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Bénéfice ({Math.round(profitRate * 100)} %)</span>
-                    <span>{formatMAD(debourseSec * (1 + generalFeesRate) * profitRate)}</span>
+                    <span>{money(debourseSec * (1 + generalFeesRate) * profitRate)}</span>
                   </div>
                   <div className="flex justify-between border-t pt-2 text-base font-semibold text-navy-900">
                     <span>Prix de vente / {unit}</span>
-                    <span className="text-gold-600">{formatMAD(sellingPrice)}</span>
+                    <span className="text-gold-600">{money(sellingPrice)}</span>
                   </div>
                 </div>
 

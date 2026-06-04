@@ -12,7 +12,7 @@ import { LOTS_BTP, PROJECT_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { PdfDropzone } from "@/components/ui/pdf-dropzone";
 import { getCompany } from "@/lib/client-data";
-import { Loader2, FileText, ShieldCheck, FileDown, Sparkles, X, ScanText } from "lucide-react";
+import { Loader2, FileText, ShieldCheck, FileDown, Sparkles, X, ScanText, ChevronDown, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 
 interface Section { lot: string; content: string; validated?: boolean }
 
@@ -30,11 +30,18 @@ export default function CctpPage() {
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState("");
   const [company, setCompany] = useState<Record<string, unknown> | null>(null);
+  const [open, setOpen] = useState<Record<number, boolean>>({});
 
   useEffect(() => { getCompany().then(setCompany); }, []);
 
   function toggle(lot: string) {
     setSelected((s) => (s.includes(lot) ? s.filter((l) => l !== lot) : [...s, lot]));
+  }
+  function toggleOpen(i: number) {
+    setOpen((o) => ({ ...o, [i]: !o[i] }));
+  }
+  function setAllOpen(value: boolean) {
+    setOpen(Object.fromEntries(sections.map((_, i) => [i, value])));
   }
 
   async function generate() {
@@ -45,12 +52,16 @@ export default function CctpPage() {
       const planImages: { data: string; mediaType: string }[] = [];
       if (planFiles.length > 0) {
         setPhase("Lecture des plans…");
-        const { rasterizePdf } = await import("@/lib/pdf-render");
-        for (const f of planFiles) planImages.push(...(await rasterizePdf(f)));
-        const totalChars = planImages.reduce((n, im) => n + im.data.length, 0);
-        if (totalChars > 3_800_000) {
-          toast.error("Plans trop volumineux. Réduisez le nombre de pages/plans à envoyer.");
-          setBusy(false); setPhase(""); return;
+        const { rasterizePdfBudgeted } = await import("@/lib/pdf-render");
+        const perFile = Math.floor(3_600_000 / planFiles.length);
+        let skipped = 0;
+        for (const f of planFiles) {
+          const r = await rasterizePdfBudgeted(f, { budgetChars: perFile });
+          planImages.push(...r.images);
+          skipped += r.pagesSkipped;
+        }
+        if (skipped > 0) {
+          toast.warning(`${skipped} page(s) de plan ignorée(s) (volumineux). Le CCTP reste basé sur les plans lus.`);
         }
       }
 
@@ -63,6 +74,7 @@ export default function CctpPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setSections(data.sections.map((s: Section) => ({ ...s, validated: false })));
+      setOpen({ 0: true }); // première section dépliée par défaut
       setPlanContext(data.planContext ?? "");
       toast.success(`${data.sections.length} section(s) générée(s). Vérifiez puis validez.`);
     } catch (e) {
@@ -94,9 +106,9 @@ export default function CctpPage() {
     <div className="animate-fade-up">
       <PageHeader
         eyebrow="Cahier des charges"
-        title="Générateur de"
-        accent="CCTP"
-        description="Sélectionnez les lots, générez un CCTP structuré, modifiez-le, puis validez avant export."
+        title="CCTP"
+        accent="par lot"
+        description="Sélectionnez les lots, générez un CCTP structuré, modifiez-le section par section, puis validez avant export."
       />
 
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
@@ -211,30 +223,58 @@ export default function CctpPage() {
                   </CardContent>
                 </Card>
               )}
-              {sections.map((s, i) => (
-                <Card key={i}>
-                  <CardHeader className="flex-row items-center justify-between">
-                    <CardTitle className="flex items-center gap-2 text-navy-900">{s.lot}</CardTitle>
-                    <div className="flex items-center gap-2">
-                      {s.validated ? <Badge variant="success">Validé</Badge> : <Badge variant="warning">À valider</Badge>}
-                      <Button
-                        variant={s.validated ? "outline" : "default"}
-                        size="sm"
-                        onClick={() => setSections((arr) => arr.map((x, j) => j === i ? { ...x, validated: !x.validated } : x))}
-                      >
-                        <ShieldCheck className="size-4" /> {s.validated ? "Dévalider" : "Valider"}
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <Textarea
-                      value={s.content ?? ""}
-                      onChange={(e) => setSections((arr) => arr.map((x, j) => j === i ? { ...x, content: e.target.value, validated: false } : x))}
-                      className="min-h-[220px] font-mono text-xs leading-relaxed"
-                    />
-                  </CardContent>
-                </Card>
-              ))}
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">
+                  {sections.filter((s) => s.validated).length}/{sections.length} section(s) validée(s)
+                </p>
+                <div className="flex gap-1.5">
+                  <Button variant="ghost" size="sm" onClick={() => setAllOpen(true)}>
+                    <ChevronsUpDown className="size-4" /> Tout déplier
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setAllOpen(false)}>
+                    <ChevronsDownUp className="size-4" /> Tout replier
+                  </Button>
+                </div>
+              </div>
+
+              {sections.map((s, i) => {
+                const isOpen = open[i] ?? false;
+                return (
+                  <Card key={i} className="overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => toggleOpen(i)}
+                      className="flex w-full items-center justify-between gap-3 px-6 py-4 text-left transition-colors hover:bg-muted/30"
+                    >
+                      <span className="flex items-center gap-2.5 font-semibold text-navy-900">
+                        <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", isOpen && "rotate-180")} />
+                        {s.lot}
+                      </span>
+                      <span className="flex items-center gap-2">
+                        {s.validated ? <Badge variant="success">Validé</Badge> : <Badge variant="warning">À valider</Badge>}
+                      </span>
+                    </button>
+                    {isOpen && (
+                      <CardContent className="space-y-3 border-t border-border/60 pt-4">
+                        <Textarea
+                          value={s.content ?? ""}
+                          onChange={(e) => setSections((arr) => arr.map((x, j) => j === i ? { ...x, content: e.target.value, validated: false } : x))}
+                          className="min-h-[260px] font-mono text-xs leading-relaxed"
+                        />
+                        <div className="flex justify-end">
+                          <Button
+                            variant={s.validated ? "outline" : "default"}
+                            size="sm"
+                            onClick={() => setSections((arr) => arr.map((x, j) => j === i ? { ...x, validated: !x.validated } : x))}
+                          >
+                            <ShieldCheck className="size-4" /> {s.validated ? "Dévalider" : "Valider la section"}
+                          </Button>
+                        </div>
+                      </CardContent>
+                    )}
+                  </Card>
+                );
+              })}
 
               <Card className="border-gold-200 bg-gold-50/40">
                 <CardContent className="flex flex-wrap items-center justify-between gap-4 py-4">

@@ -1,6 +1,7 @@
 import { Search, Bell } from "lucide-react";
 import { signOut, auth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
+import { CurrencyToggle } from "@/components/layout/currency-toggle";
 
 export async function Topbar() {
   const session = await auth();
@@ -17,6 +18,7 @@ export async function Topbar() {
       </div>
 
       <div className="ml-auto flex items-center gap-3">
+        <CurrencyToggle />
         <Button variant="ghost" size="icon" className="text-muted-foreground">
           <Bell className="size-5" />
         </Button>
