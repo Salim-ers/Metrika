@@ -11,10 +11,11 @@ import { PdfDropzone } from "@/components/ui/pdf-dropzone";
 import { getCompany } from "@/lib/client-data";
 import { Loader2, Languages, FileDown, Sparkles, FileText, X, ArrowRight } from "lucide-react";
 
-type Direction = "auto" | "fr-en" | "en-fr";
+type Direction = "auto" | "fr-en" | "en-fr" | "fr-ar" | "ar-fr";
 interface Result { sourceLang: string; targetLang: string; pages: string[] }
 
-const LANG_FR: Record<string, string> = { fr: "Français", en: "Anglais" };
+const LANG_FR: Record<string, string> = { fr: "Français", en: "Anglais", ar: "Arabe" };
+const isRtl = (lang: string) => lang === "ar";
 
 export default function TraductionPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -66,7 +67,7 @@ export default function TraductionPage() {
       const m = await import("@/lib/export-translation");
       const meta = { fileName: file?.name, sourceLang: result.sourceLang, targetLang: result.targetLang };
       if (kind === "pdf") await m.exportTranslationPdf(result.pages, fresh as never, meta);
-      else await m.exportTranslationDocx(result.pages, meta);
+      else await m.exportTranslationDocx(result.pages, fresh as never, meta);
       toast.success("Export généré.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Export impossible");
@@ -112,6 +113,8 @@ export default function TraductionPage() {
                 <option value="auto">Détection automatique (bascule vers l’autre langue)</option>
                 <option value="fr-en">Français → Anglais</option>
                 <option value="en-fr">Anglais → Français</option>
+                <option value="fr-ar">Français → Arabe</option>
+                <option value="ar-fr">Arabe → Français</option>
               </select>
             </div>
 
@@ -158,11 +161,11 @@ export default function TraductionPage() {
                   <CardContent className="grid gap-4 md:grid-cols-2">
                     <div>
                       <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-gold-600">{LANG_FR[result.sourceLang]} (original)</p>
-                      <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-border/60 bg-muted/20 p-3 font-sans text-xs leading-relaxed text-muted-foreground">{pagesOrig[i] ?? ""}</pre>
+                      <pre dir={isRtl(result.sourceLang) ? "rtl" : "ltr"} className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-border/60 bg-muted/20 p-3 font-sans text-xs leading-relaxed text-muted-foreground">{pagesOrig[i] ?? ""}</pre>
                     </div>
                     <div>
                       <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-gold-600">{LANG_FR[result.targetLang]} (traduction)</p>
-                      <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-border/60 bg-card p-3 font-sans text-xs leading-relaxed text-navy-800">{tr}</pre>
+                      <pre dir={isRtl(result.targetLang) ? "rtl" : "ltr"} className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-border/60 bg-card p-3 font-sans text-xs leading-relaxed text-navy-800">{tr}</pre>
                     </div>
                   </CardContent>
                 </Card>

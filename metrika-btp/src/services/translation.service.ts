@@ -1,9 +1,10 @@
 import { runClaude } from "@/lib/ai/client";
+import { isArabic } from "@/lib/arabic";
 
-export type Lang = "fr" | "en";
-export type Direction = "auto" | "fr-en" | "en-fr";
+export type Lang = "fr" | "en" | "ar";
+export type Direction = "auto" | "fr-en" | "en-fr" | "fr-ar" | "ar-fr";
 
-const LANG_LABEL: Record<Lang, string> = { fr: "français", en: "anglais" };
+const LANG_LABEL: Record<Lang, string> = { fr: "français", en: "anglais", ar: "arabe" };
 
 /** Découpe un texte en morceaux ~max caractères en respectant les sauts de ligne. */
 function chunkText(text: string, max = 6000): string[] {
@@ -21,10 +22,12 @@ function chunkText(text: string, max = 6000): string[] {
   return out;
 }
 
-/** Détecte la langue dominante d'un échantillon (fr/en, fallback fr). */
+/** Détecte la langue dominante d'un échantillon (ar/fr/en, fallback fr). */
 export async function detectLanguage(sample: string): Promise<Lang> {
   const text = sample.slice(0, 1500).trim();
   if (!text) return "fr";
+  // L'arabe se détecte sans appel API (présence du script arabe).
+  if (isArabic(text)) return "ar";
   const res = await runClaude<{ lang: string }>({
     system:
       "Tu es un détecteur de langue. Réponds uniquement via l'outil avec le code ISO 639-1 de la langue dominante du texte.",
@@ -32,11 +35,14 @@ export async function detectLanguage(sample: string): Promise<Lang> {
     maxTokens: 50,
     schema: {
       type: "object",
-      properties: { lang: { type: "string", description: "Code ISO 639-1, ex: fr ou en" } },
+      properties: { lang: { type: "string", description: "Code ISO 639-1, ex: fr, en ou ar" } },
       required: ["lang"],
     },
   });
-  return res.lang?.toLowerCase().startsWith("en") ? "en" : "fr";
+  const code = res.lang?.toLowerCase() ?? "";
+  if (code.startsWith("ar")) return "ar";
+  if (code.startsWith("en")) return "en";
+  return "fr";
 }
 
 /**
@@ -90,9 +96,12 @@ export async function translateDocument(
 
   if (direction === "fr-en") { sourceLang = "fr"; targetLang = "en"; }
   else if (direction === "en-fr") { sourceLang = "en"; targetLang = "fr"; }
+  else if (direction === "fr-ar") { sourceLang = "fr"; targetLang = "ar"; }
+  else if (direction === "ar-fr") { sourceLang = "ar"; targetLang = "fr"; }
   else {
     sourceLang = await detectLanguage(sample);
-    targetLang = sourceLang === "fr" ? "en" : "fr";
+    // En auto : l'arabe bascule vers le français, sinon FR↔EN.
+    targetLang = sourceLang === "ar" ? "fr" : sourceLang === "fr" ? "en" : "fr";
   }
 
   const translated: string[] = [];
