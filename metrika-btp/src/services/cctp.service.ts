@@ -1,9 +1,29 @@
 import { runClaude } from "@/lib/ai/client";
-import { CCTP_PROMPT, CCTP_SCHEMA, PLAN_ANALYSIS_PROMPT } from "@/lib/ai/prompts";
+import { CCTP_PROMPT, PLAN_ANALYSIS_PROMPT } from "@/lib/ai/prompts";
 
 interface CctpSectionResult { lot: string; content: string }
 
 export interface PlanImage { data: string; mediaType: string }
+
+/**
+ * Appel CCTP en SORTIE TEXTE (Markdown), pas en tool-use : sur du contenu long,
+ * la sortie structurée pouvait être tronquée et revenir VIDE. En texte, même une
+ * réponse longue reste exploitable. Petit retry pour les erreurs transitoires.
+ */
+async function callCctpText(user: string, maxTokens: number): Promise<string> {
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const text = await runClaude<string>({ system: CCTP_PROMPT, user, maxTokens });
+      if (text && text.trim().length > 40) return text.trim();
+      lastErr = new Error("Réponse vide du modèle");
+    } catch (e) {
+      lastErr = e;
+    }
+    await new Promise((r) => setTimeout(r, 1200 * (attempt + 1))); // backoff court
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("Génération impossible");
+}
 
 /**
  * Analyse visuelle des plans (rastérisés en images côté navigateur) et
@@ -37,10 +57,8 @@ ${params.planContext ? `\nSynthèse des plans du projet (à utiliser pour adapte
 
 Rédige la section CCTP de ce lot, niveau économiste senior, intégrable directement à un DCE réel. Document COMPLET et DÉTAILLÉ : traite tous les postes du lot avec, pour chacun, fourniture / mise en œuvre / normes / contrôles / tolérances / interfaces. Aucune synthèse, aucun résumé.`;
 
-  // 12000 tokens : section complète sans troncature, en restant sous la limite serverless.
-  const res = await runClaude<CctpSectionResult>({ system: CCTP_PROMPT, user, schema: CCTP_SCHEMA, maxTokens: 12000 });
-  // Garde-fou : si le modèle a renvoyé un objet sans contenu, on évite un export vide.
-  return { lot: res.lot || params.lot, content: res.content ?? "" };
+  const content = await callCctpText(user, 12000);
+  return { lot: params.lot, content };
 }
 
 /** Définit les passes de rédaction d'un lot (mode exhaustif). */
@@ -82,40 +100,6 @@ Contexte / exigences particulières : ${params.context ?? "aucune"}
 ${params.planContext ? `\nSynthèse des plans du projet (à utiliser pour adapter les prescriptions) :\n${params.planContext}` : ""}`;
 }
 
-/**
- * Génère un CCTP EXHAUSTIF pour un lot en plusieurs passes enchaînées
- * (chaque passe traite une partie de la structure), pour un document long
- * et complet, intégrable à un DCE réel. Une passe en échec n'annule pas le lot.
- */
-export async function generateCctpSectionDeep(params: {
-  lot: string;
-  projectType?: string;
-  context?: string;
-  planContext?: string;
-}): Promise<CctpSectionResult> {
-  const passes = passesFor(params.lot);
-  // Les passes couvrent des chapitres DISTINCTS → on les lance EN PARALLÈLE
-  // (temps mur ≈ une passe au lieu de la somme) tout en gardant l'ordre.
-  const settled = await Promise.allSettled(
-    passes.map((pass) => {
-      const user = `${baseUser(params)}
-
-Rédige UNIQUEMENT, de façon EXHAUSTIVE et au niveau économiste senior, les chapitres suivants :
-${pass.chapters}
-
-Pour chaque poste (sous-titre ###) : fourniture, mise en œuvre, normes, contrôles, tolérances, interfaces. Ne rédige PAS les autres chapitres du lot (ils sont traités dans d'autres passes). Aucune synthèse, aucun résumé.`;
-      return runClaude<CctpSectionResult>({ system: CCTP_PROMPT, user, schema: CCTP_SCHEMA, maxTokens: 16000 });
-    }),
-  );
-  const parts = settled.map((s, i) => {
-    if (s.status === "fulfilled" && s.value.content?.trim()) return s.value.content.trim();
-    const reason = s.status === "rejected" ? (s.reason instanceof Error ? s.reason.message : "erreur") : "vide";
-    return `## ${passes[i].label} — à régénérer\n\nCette partie n'a pas pu être générée (${reason}). Relancez la génération.`;
-  });
-  if (settled.every((s) => s.status === "rejected")) throw new Error("Génération du lot impossible.");
-  return { lot: params.lot, content: parts.join("\n\n") };
-}
-
 /** Nombre de passes pour un lot (1 si non exhaustif). */
 export function cctpPassCount(lot: string, deep?: boolean): number {
   return deep ? passesFor(lot).length : 1;
@@ -146,57 +130,9 @@ Rédige UNIQUEMENT, de façon EXHAUSTIVE et au niveau économiste senior, les ch
 ${pass.chapters}
 
 Pour chaque poste (sous-titre ###) : fourniture, mise en œuvre, normes, contrôles, tolérances, interfaces. Ne rédige PAS les autres chapitres du lot (ils sont traités séparément). Aucune synthèse, aucun résumé.`;
-  // 11000 tokens/passe : chaque appel finit confortablement sous la limite serverless,
+  // Sortie texte (Markdown) + retry. 11000 tokens/passe : finit sous la limite serverless,
   // la longueur totale vient du cumul des passes.
-  const res = await runClaude<CctpSectionResult>({ system: CCTP_PROMPT, user, schema: CCTP_SCHEMA, maxTokens: 11000 });
-  return { content: res.content?.trim() ?? "", passCount: passes.length, label: pass.label };
+  const content = await callCctpText(user, 11000);
+  return { content, passCount: passes.length, label: pass.label };
 }
 
-export async function generateCctp(params: {
-  lots: string[];
-  projectType?: string;
-  context?: string;
-  planContext?: string;
-  deep?: boolean;
-}): Promise<CctpSectionResult[]> {
-  const { lots, deep, ...rest } = params;
-  const gen = (lot: string) =>
-    deep ? generateCctpSectionDeep({ lot, ...rest }) : generateCctpSection({ lot, ...rest });
-
-  // Génération par vagues de CONCURRENCY lots : assez parallèle pour rester
-  // rapide, mais sans saturer l'API Claude (les rafales déclenchaient des
-  // erreurs 429 qui faisaient échouer TOUTE la génération avec Promise.all).
-  // En mode exhaustif, chaque lot lance déjà plusieurs passes en parallèle :
-  // on traite donc 1 lot à la fois (sinon trop d'appels simultanés → 429).
-  const CONCURRENCY = deep ? 1 : 3;
-  const results: CctpSectionResult[] = new Array(lots.length);
-  let failures = 0;
-
-  for (let i = 0; i < lots.length; i += CONCURRENCY) {
-    const batch = lots.slice(i, i + CONCURRENCY);
-    const settled = await Promise.allSettled(
-      batch.map((lot) => gen(lot)),
-    );
-    settled.forEach((s, j) => {
-      const lot = batch[j];
-      if (s.status === "fulfilled") {
-        results[i + j] = s.value;
-      } else {
-        // Un lot en échec ne bloque plus les autres : on renvoie une section
-        // éditable signalant l'erreur, à régénérer/compléter par l'utilisateur.
-        failures++;
-        const reason = s.reason instanceof Error ? s.reason.message : "Erreur de génération";
-        results[i + j] = {
-          lot,
-          content: `## Section à régénérer\n\nLa génération automatique de ce lot a échoué : ${reason}\n\nRelancez la génération pour ce lot, ou rédigez la section manuellement.`,
-        };
-      }
-    });
-  }
-
-  // Si TOUS les lots ont échoué, on lève l'erreur (rien d'exploitable).
-  if (failures === lots.length) {
-    throw new Error("La génération du CCTP a échoué pour tous les lots. Vérifiez la clé API Claude et réessayez.");
-  }
-  return results;
-}

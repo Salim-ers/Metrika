@@ -81,7 +81,7 @@ FORMAT DE SORTIE (Markdown dans le champ "content") :
 - Listes à puces avec "- ", intitulés en gras ("**Fourniture** : …").
 - Document complet, exhaustif, sans synthèse ni résumé.
 
-SORTIE : renvoie le résultat via l'outil structuré : { "lot": "<intitulé du lot>", "content": "<CCTP en Markdown>" }.`;
+SORTIE : renvoie DIRECTEMENT le contenu du CCTP en Markdown (titres "## " et "### ", listes "- ", intitulés en gras). Aucun JSON, aucun préambule, aucun commentaire — uniquement le CCTP.`;
 
 // ── Analyse de plans (vision) ─────────────────────────────────────
 export const PLAN_ANALYSIS_PROMPT = `${BASE}

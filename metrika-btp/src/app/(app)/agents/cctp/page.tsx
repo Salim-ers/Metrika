@@ -117,22 +117,24 @@ export default function CctpPage() {
       for (let li = 0; li < selected.length; li++) {
         const lot = selected[li];
         const pc = passCountOf(lot);
-        setPhase(`${lot} (${li + 1}/${selected.length})…`);
-        const passResults = await Promise.all(
-          Array.from({ length: pc }, (_, pi) =>
-            post({ lot, projectType, context, planContext: planCtx, deep, passIndex: pi }),
-          ),
-        );
-        const content = passResults
-          .map(({ ok, d }, i) => {
-            if (ok && d?.content) return d.content as string;
+        built.push({ lot, content: "", validated: false });
+        const idx = built.length - 1;
+        if (idx === 0) setOpen({ 0: true });
+        setSections([...built]);
+        // Passes SÉQUENTIELLES (évite les pics de débit / 429) + ajout progressif.
+        const parts: string[] = [];
+        for (let pi = 0; pi < pc; pi++) {
+          setPhase(`${lot} (${li + 1}/${selected.length})${pc > 1 ? ` — partie ${pi + 1}/${pc}` : ""}…`);
+          const { ok, d } = await post({ lot, projectType, context, planContext: planCtx, deep, passIndex: pi });
+          if (ok && d?.content) {
+            parts.push(d.content as string);
+          } else {
             anyFail = true;
-            return `## Partie ${i + 1} — à régénérer\n\n${(d && d.error) || "Échec de génération."}`;
-          })
-          .join("\n\n");
-        built.push({ lot, content, validated: false });
-        setSections([...built]); // affichage progressif au fil des lots
-        if (built.length === 1) setOpen({ 0: true });
+            parts.push(`## Partie ${pi + 1} — à régénérer\n\n${(d && d.error) || "Échec de génération."}`);
+          }
+          built[idx] = { ...built[idx], content: parts.join("\n\n") };
+          setSections([...built]); // la section se remplit passe après passe
+        }
       }
       if (built.length === 0) throw new Error("Aucune section générée.");
       stopTimer(t0);
