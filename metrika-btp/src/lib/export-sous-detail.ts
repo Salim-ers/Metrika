@@ -101,10 +101,12 @@ export async function exportSousDetailPdf(d: SousDetailExport): Promise<void> {
     k.y -= 21;
   };
   const totalLine = (label: string, val: number) => {
-    if (k.ensure(18)) { /* page suffisante */ }
-    k.text(label, qtR, k.y, { size: 8.5, bold: true, color: C.GREY, align: "right" });
+    k.ensure(24);
+    k.y -= 15; // descend sous la dernière ligne du tableau (évite le chevauchement)
+    k.page.drawRectangle({ x: M, y: k.y - 5, width: W - 2 * M, height: 18, color: C.ZEBRA });
+    k.text(label, puR, k.y, { size: 8.5, bold: true, color: C.NAVY, align: "right" });
     k.text(fmtMad(val) + " " + unit, totR, k.y, { size: 9, bold: true, align: "right" });
-    k.y -= 16;
+    k.y -= 12;
   };
   let zebra = false;
   const zebraRow = (top: number, rowH: number) => { if (zebra) k.page.drawRectangle({ x: M, y: top - rowH, width: W - 2 * M, height: rowH, color: C.ZEBRA }); zebra = !zebra; };
@@ -204,6 +206,15 @@ export async function exportSousDetailPdf(d: SousDetailExport): Promise<void> {
   synLine(`Frais généraux ${Math.round(d.generalFeesRate * 100)} %  +  Bénéfice ${Math.round(d.profitRate * 100)} %`, "");
   synLine("Coefficient de vente", coef.toLocaleString("fr-FR", { minimumFractionDigits: 4, maximumFractionDigits: 4 }));
   synLine(`PRIX DE VENTE / ${d.unit}`, fmtMad(pv) + " " + unit, true, true);
+
+  // ── Cachet de l'entreprise (à gauche, en regard de la synthèse) ──
+  if (k.stampImg) {
+    const sw = 100;
+    const sh = (k.stampImg.height / k.stampImg.width) * sw;
+    const sty = Math.max(k.y, M + k.FOOT + 4);
+    k.page.drawImage(k.stampImg, { x: M, y: sty, width: sw, height: sh });
+    k.text("Cachet et signature", M, sty - 10, { size: 7.5, color: C.GREY });
+  }
 
   await k.finish("sous-detail-metrika.pdf");
 }

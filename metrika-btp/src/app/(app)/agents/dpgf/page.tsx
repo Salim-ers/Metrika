@@ -69,10 +69,12 @@ export default function DpgfPage() {
 
   async function exportDpgf(kind: "excel" | "docx" | "pdf") {
     try {
+      const fresh = await getCompany(true); // logo/cachet toujours à jour
+      setCompany(fresh);
       const m = await import("@/lib/export-dpgf");
-      if (kind === "excel") await m.exportDpgfExcel(lines, company as never);
-      else if (kind === "docx") await m.exportDpgfDocx(lines, company as never);
-      else await m.exportDpgfPdf(lines, company as never);
+      if (kind === "excel") await m.exportDpgfExcel(lines, fresh as never);
+      else if (kind === "docx") await m.exportDpgfDocx(lines, fresh as never);
+      else await m.exportDpgfPdf(lines, fresh as never);
       toast.success("Export généré.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Export impossible");

@@ -107,6 +107,8 @@ export default function DevisPage() {
 
   async function exportDevis(kind: "pdf" | "excel" | "docx") {
     try {
+      const fresh = await getCompany(true); // logo/cachet toujours à jour
+      setCompany(fresh);
       const m = await import("@/lib/export-devis");
       const data = {
         quoteNumber,
@@ -117,7 +119,7 @@ export default function DevisPage() {
         clientAddress,
         projectName,
         lines,
-        company: company as never,
+        company: fresh as never,
       };
       if (kind === "pdf") await m.exportDevisPdf(data);
       else if (kind === "excel") await m.exportDevisExcel(data);

@@ -77,11 +77,13 @@ export default function CctpPage() {
 
   async function exportCctp(kind: "docx" | "pdf") {
     try {
+      const fresh = await getCompany(true); // logo/cachet toujours à jour
+      setCompany(fresh);
       const m = await import("@/lib/export-cctp");
       const data = sections.map((s) => ({ lot: s.lot, content: s.content }));
       const meta = { projectName, projectType, owner, architect, bet };
-      if (kind === "docx") await m.exportCctpDocx(data, company as never, meta);
-      else await m.exportCctpPdf(data, company as never, meta);
+      if (kind === "docx") await m.exportCctpDocx(data, fresh as never, meta);
+      else await m.exportCctpPdf(data, fresh as never, meta);
       toast.success("Export généré.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Export impossible");

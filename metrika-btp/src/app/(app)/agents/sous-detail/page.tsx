@@ -53,8 +53,10 @@ export default function SousDetailPage() {
 
   async function exportSd(kind: "excel" | "pdf") {
     try {
+      const fresh = await getCompany(true); // logo/cachet toujours à jour
+      setCompany(fresh);
       const m = await import("@/lib/export-sous-detail");
-      const data = { designation, unit, lot, yield: yieldVal, generalFeesRate, profitRate, components, company: company as never };
+      const data = { designation, unit, lot, yield: yieldVal, generalFeesRate, profitRate, components, company: fresh as never };
       if (kind === "excel") await m.exportSousDetailExcel(data);
       else await m.exportSousDetailPdf(data);
       toast.success("Export généré.");
