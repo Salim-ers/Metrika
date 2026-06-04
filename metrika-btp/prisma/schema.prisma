@@ -79,6 +79,13 @@ model Company {
   cnss          String?                         // N° CNSS
   patente       String?                         // Taxe professionnelle
   capital       String?
+  // Pays & devise (Maroc / France / International)
+  country       String   @default("Maroc")      // Maroc | France | International
+  currency      String   @default("MAD")        // MAD | EUR
+  // Identifiants France (si applicable)
+  siret         String?                          // SIRET
+  vatNumber     String?                          // N° TVA intracommunautaire
+  ape           String?                          // Code APE / NAF
   // Coordonnées
   address       String?
   city          String?

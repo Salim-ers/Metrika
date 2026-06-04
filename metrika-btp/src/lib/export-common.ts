@@ -11,6 +11,11 @@ export interface CompanyExport {
   cnss?: string | null;
   patente?: string | null;
   capital?: string | null;
+  country?: string | null;
+  currency?: string | null;
+  siret?: string | null;
+  vatNumber?: string | null;
+  ape?: string | null;
   address?: string | null;
   city?: string | null;
   phone?: string | null;
@@ -63,6 +68,11 @@ export function fmtMad(n: number): string {
   return winAnsiSafe(n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 }
 
+/** Suffixe monétaire selon la devise de l'entreprise (EUR → €, sinon MAD). */
+export function moneyUnit(c?: CompanyExport | null): string {
+  return (c?.currency ?? "MAD") === "EUR" ? "€" : "MAD";
+}
+
 /** Décode une data URL en octets + type MIME. */
 export function dataUrlToBytes(dataUrl?: string | null): { bytes: Uint8Array; mime: string } | null {
   if (!dataUrl || !dataUrl.startsWith("data:")) return null;
@@ -93,6 +103,7 @@ export function legalLines(c?: CompanyExport | null): string[] {
   const ids = [
     c.ice && `ICE : ${c.ice}`, c.rc && `RC : ${c.rc}`, c.ifNumber && `IF : ${c.ifNumber}`,
     c.cnss && `CNSS : ${c.cnss}`, c.patente && `Patente : ${c.patente}`,
+    c.siret && `SIRET : ${c.siret}`, c.vatNumber && `TVA : ${c.vatNumber}`, c.ape && `APE : ${c.ape}`,
   ].filter(Boolean);
   const bank = [
     c.bankName && `Banque : ${c.bankName}`, c.rib && `RIB : ${c.rib}`,

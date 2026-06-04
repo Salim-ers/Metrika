@@ -1,6 +1,6 @@
 "use client";
 
-import { CompanyExport, downloadBlob, fmtMad, dataUrlToBytes } from "@/lib/export-common";
+import { CompanyExport, downloadBlob, fmtMad, dataUrlToBytes, moneyUnit } from "@/lib/export-common";
 import { createPdf } from "@/lib/pdf-kit";
 
 export interface SousDetailExport {
@@ -44,7 +44,7 @@ export async function exportSousDetailExcel(d: SousDetailExport): Promise<void> 
   ws.addRow([`Sous-détail de prix — ${d.designation} (/ ${d.unit})`]).font = { bold: true, size: 13 };
   ws.addRow([d.company?.name ?? "Metrika Métrage BTP"]);
   ws.addRow([]);
-  const hdr = ws.addRow(["Type", "Désignation", "U.", "Qté/U.", "Coût U. (MAD)", "Montant (MAD)"]);
+  const hdr = ws.addRow(["Type", "Désignation", "U.", "Qté/U.", `Coût U. (${moneyUnit(d.company)})`, `Montant (${moneyUnit(d.company)})`]);
   hdr.font = { bold: true, color: { argb: "FFFFFFFF" } };
   hdr.eachCell((c) => { c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF14233F" } }; });
   for (const c of d.components) {
@@ -63,6 +63,7 @@ export async function exportSousDetailExcel(d: SousDetailExport): Promise<void> 
 export async function exportSousDetailPdf(d: SousDetailExport): Promise<void> {
   const k = await createPdf(d.company);
   const { C, W, M } = k;
+  const unit = moneyUnit(d.company);
   k.header({ title: "SOUS-DÉTAIL", subtitle: "de prix unitaire" });
 
   // ── Bloc ouvrage ──
@@ -102,7 +103,7 @@ export async function exportSousDetailPdf(d: SousDetailExport): Promise<void> {
   const totalLine = (label: string, val: number) => {
     if (k.ensure(18)) { /* page suffisante */ }
     k.text(label, qtR, k.y, { size: 8.5, bold: true, color: C.GREY, align: "right" });
-    k.text(fmtMad(val) + " MAD", totR, k.y, { size: 9, bold: true, align: "right" });
+    k.text(fmtMad(val) + " " + unit, totR, k.y, { size: 9, bold: true, align: "right" });
     k.y -= 16;
   };
   let zebra = false;
@@ -199,10 +200,10 @@ export async function exportSousDetailPdf(d: SousDetailExport): Promise<void> {
     k.text(val, totR, k.y - (navy ? 12 : 4), { size: navy ? 12 : 9.5, bold: true, color: gold ? C.GOLD : navy ? C.WHITE : C.NAVY, align: "right" });
     k.y -= navy ? 28 : 15;
   };
-  synLine("Total déboursé sec unitaire", fmtMad(ds) + " MAD");
+  synLine("Total déboursé sec unitaire", fmtMad(ds) + " " + unit);
   synLine(`Frais généraux ${Math.round(d.generalFeesRate * 100)} %  +  Bénéfice ${Math.round(d.profitRate * 100)} %`, "");
   synLine("Coefficient de vente", coef.toLocaleString("fr-FR", { minimumFractionDigits: 4, maximumFractionDigits: 4 }));
-  synLine(`PRIX DE VENTE / ${d.unit}`, fmtMad(pv) + " MAD", true, true);
+  synLine(`PRIX DE VENTE / ${d.unit}`, fmtMad(pv) + " " + unit, true, true);
 
   await k.finish("sous-detail-metrika.pdf");
 }

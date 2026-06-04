@@ -1,6 +1,6 @@
 "use client";
 
-import { CompanyExport, fmtMad } from "@/lib/export-common";
+import { CompanyExport, fmtMad, moneyUnit } from "@/lib/export-common";
 import { createPdf } from "@/lib/pdf-kit";
 
 export interface DpgfExportLine {
@@ -26,7 +26,8 @@ function download(blob: Blob, name: string) {
 const fmt = (n: number) => fmtMad(n);
 
 // ── Excel ─────────────────────────────────────────────────────────
-export async function exportDpgfExcel(lines: DpgfExportLine[]) {
+export async function exportDpgfExcel(lines: DpgfExportLine[], company?: CompanyExport | null) {
+  const unit = moneyUnit(company);
   const mod = await import("exceljs");
   const ExcelJS = (mod as unknown as { default?: typeof mod }).default ?? mod;
   const wb = new ExcelJS.Workbook();
@@ -37,8 +38,8 @@ export async function exportDpgfExcel(lines: DpgfExportLine[]) {
     { header: "Désignation", key: "designation", width: 50 },
     { header: "Unité", key: "unit", width: 8 },
     { header: "Quantité", key: "quantity", width: 12 },
-    { header: "P.U. (MAD)", key: "unitPrice", width: 14 },
-    { header: "Total HT (MAD)", key: "total", width: 16 },
+    { header: `P.U. (${unit})`, key: "unitPrice", width: 14 },
+    { header: `Total HT (${unit})`, key: "total", width: 16 },
   ];
   ws.getRow(1).font = { bold: true };
   ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF14233F" } };
@@ -60,7 +61,8 @@ export async function exportDpgfExcel(lines: DpgfExportLine[]) {
 }
 
 // ── DOCX ──────────────────────────────────────────────────────────
-export async function exportDpgfDocx(lines: DpgfExportLine[]) {
+export async function exportDpgfDocx(lines: DpgfExportLine[], company?: CompanyExport | null) {
+  const unit = moneyUnit(company);
   const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, HeadingLevel, AlignmentType } =
     await import("docx");
   const header = ["Lot", "Désignation", "U.", "Qté", "P.U.", "Total HT"];
@@ -88,7 +90,7 @@ export async function exportDpgfDocx(lines: DpgfExportLine[]) {
         new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("DPGF — Décomposition du Prix Global et Forfaitaire")] }),
         new Paragraph({ children: [new TextRun({ text: "Metrika Métrage BTP", color: "888888" })] }),
         new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows }),
-        new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: `Total HT : ${fmt(totalHT)} MAD`, bold: true })] }),
+        new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: `Total HT : ${fmt(totalHT)} ${unit}`, bold: true })] }),
       ],
     }],
   });
@@ -99,6 +101,7 @@ export async function exportDpgfDocx(lines: DpgfExportLine[]) {
 export async function exportDpgfPdf(lines: DpgfExportLine[], company?: CompanyExport | null, vatRate = 20) {
   const k = await createPdf(company);
   const { C, W, M } = k;
+  const unit = moneyUnit(company);
   k.header({ title: "DPGF", subtitle: "Décomposition du Prix Global et Forfaitaire" });
 
   // Regroupement par lot (ordre d'apparition).
@@ -153,7 +156,7 @@ export async function exportDpgfPdf(lines: DpgfExportLine[], company?: CompanyEx
     if (k.ensure(20)) head();
     k.y -= 2;
     k.text(`Sous-total — ${g.lot}`, puR, k.y, { size: 8.5, bold: true, color: C.GREY, align: "right" });
-    k.text(fmt(sub) + " MAD", totR, k.y, { size: 8.5, bold: true, align: "right" });
+    k.text(fmt(sub) + " " + unit, totR, k.y, { size: 8.5, bold: true, align: "right" });
     k.y -= 16;
   }
 
@@ -167,7 +170,7 @@ export async function exportDpgfPdf(lines: DpgfExportLine[], company?: CompanyEx
   k.text(`TVA (${vatRate} %)`, boxX + 12, k.y, { size: 9.5, color: C.GREY }); k.text(fmt(vat), totR, k.y, { size: 9.5, align: "right" }); k.y -= 10;
   k.page.drawRectangle({ x: boxX, y: k.y - 24, width: boxW, height: 26, color: C.NAVY });
   k.text("TOTAL TTC", boxX + 12, k.y - 16, { size: 11, bold: true, color: C.WHITE });
-  k.text(fmt(ttc) + " MAD", totR, k.y - 16, { size: 12, bold: true, color: C.GOLD, align: "right" });
+  k.text(fmt(ttc) + " " + unit, totR, k.y - 16, { size: 12, bold: true, color: C.GOLD, align: "right" });
 
   await k.finish("dpgf-metrika.pdf");
 }

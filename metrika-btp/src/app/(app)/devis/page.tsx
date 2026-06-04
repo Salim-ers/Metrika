@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { MetrikaLogo } from "@/components/layout/metrika-logo";
-import { formatMAD, formatDate, buildQuoteNumber } from "@/lib/utils";
+import { formatMoney, formatDate, buildQuoteNumber } from "@/lib/utils";
+import { getCompany, getPrices } from "@/lib/client-data";
 import { UNITS } from "@/lib/constants";
 import { Plus, Trash2, FileDown, CheckCircle2, ReceiptText, Library, Upload, Loader2 } from "lucide-react";
 
@@ -41,15 +42,13 @@ export default function DevisPage() {
   const [company, setCompany] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
-    fetch("/api/prices")
-      .then((r) => (r.ok ? r.json() : { items: [] }))
-      .then((d) => setPrices(d.items ?? []))
-      .catch(() => setPrices([]));
-    fetch("/api/company")
-      .then((r) => (r.ok ? r.json() : { company: null }))
-      .then((d) => setCompany(d.company ?? null))
-      .catch(() => setCompany(null));
+    getPrices().then((items) => setPrices(items as never));
+    getCompany().then(setCompany);
   }, []);
+
+  const currency = (company?.currency as string) || "MAD";
+  const vatRate = Number(company?.vatRate) || VAT_RATE;
+  const money = (n: number) => formatMoney(n, currency);
 
   function pickFromLibrary(i: number, priceId: string) {
     const p = prices.find((x) => x.id === priceId);
@@ -102,7 +101,7 @@ export default function DevisPage() {
   }
 
   const totalHT = lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
-  const totalVAT = totalHT * (VAT_RATE / 100);
+  const totalVAT = totalHT * (vatRate / 100);
   const totalTTC = totalHT + totalVAT;
   const canValidate = clientName.trim() !== "" && lines.some((l) => l.designation.trim() && l.unitPrice > 0);
 
@@ -113,7 +112,7 @@ export default function DevisPage() {
         quoteNumber,
         dateLabel: formatDate(today),
         validity,
-        vatRate: VAT_RATE,
+        vatRate,
         clientName,
         clientAddress,
         projectName,
@@ -188,7 +187,7 @@ export default function DevisPage() {
                         <option value="">Choisir dans la bibliothèque de prix… (ou saisir manuellement)</option>
                         {prices.map((p) => (
                           <option key={p.id} value={p.id}>
-                            {p.designation} — {formatMAD(p.sellingPrice)}/{p.unit}
+                            {p.designation} — {money(p.sellingPrice)}/{p.unit}
                           </option>
                         ))}
                       </select>
@@ -222,7 +221,7 @@ export default function DevisPage() {
                     </div>
                   </div>
                   <p className="mt-2 text-right text-xs text-muted-foreground">
-                    Total ligne : <span className="font-medium text-navy-800">{formatMAD(l.quantity * l.unitPrice)}</span>
+                    Total ligne : <span className="font-medium text-navy-800">{money(l.quantity * l.unitPrice)}</span>
                   </p>
                 </div>
               ))}
@@ -286,7 +285,7 @@ export default function DevisPage() {
               </div>
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-gold-600">TVA</p>
-                <p className="text-navy-900">{VAT_RATE} %</p>
+                <p className="text-navy-900">{vatRate} %</p>
               </div>
             </div>
 
@@ -311,8 +310,8 @@ export default function DevisPage() {
                         <p className="text-xs text-muted-foreground">{l.unit}</p>
                       </td>
                       <td className="px-2 py-3 text-center text-navy-700">{l.quantity}</td>
-                      <td className="px-2 py-3 text-right text-navy-700">{formatMAD(l.unitPrice)}</td>
-                      <td className="px-8 py-3 text-right font-medium text-navy-900">{formatMAD(l.quantity * l.unitPrice)}</td>
+                      <td className="px-2 py-3 text-right text-navy-700">{money(l.unitPrice)}</td>
+                      <td className="px-8 py-3 text-right font-medium text-navy-900">{money(l.quantity * l.unitPrice)}</td>
                     </tr>
                   ))
                 )}
@@ -323,13 +322,13 @@ export default function DevisPage() {
             <div className="flex justify-end px-8 py-6">
               <div className="w-64 space-y-2 text-sm">
                 <div className="flex justify-between text-muted-foreground">
-                  <span>Total HT</span><span className="font-medium text-navy-800">{formatMAD(totalHT)}</span>
+                  <span>Total HT</span><span className="font-medium text-navy-800">{money(totalHT)}</span>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
-                  <span>TVA ({VAT_RATE} %)</span><span>{formatMAD(totalVAT)}</span>
+                  <span>TVA ({vatRate} %)</span><span>{money(totalVAT)}</span>
                 </div>
                 <div className="flex justify-between border-t border-navy-200 pt-2 text-base font-semibold text-navy-900">
-                  <span>Total TTC</span><span className="text-gold-600">{formatMAD(totalTTC)}</span>
+                  <span>Total TTC</span><span className="text-gold-600">{money(totalTTC)}</span>
                 </div>
               </div>
             </div>

@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { formatMAD } from "@/lib/utils";
 import { PdfDropzone } from "@/components/ui/pdf-dropzone";
+import { getCompany } from "@/lib/client-data";
 import { Loader2, Table2, CheckCircle2, FileDown, Sparkles, FileText, X } from "lucide-react";
 
 interface Line {
@@ -26,9 +27,7 @@ export default function DpgfPage() {
   const [phase, setPhase] = useState("");
   const [company, setCompany] = useState<Record<string, unknown> | null>(null);
 
-  useEffect(() => {
-    fetch("/api/company").then((r) => (r.ok ? r.json() : { company: null })).then((d) => setCompany(d.company ?? null)).catch(() => {});
-  }, []);
+  useEffect(() => { getCompany().then(setCompany); }, []);
 
   async function convert() {
     if (!cctpText.trim() && cctpFiles.length === 0) {
@@ -71,8 +70,8 @@ export default function DpgfPage() {
   async function exportDpgf(kind: "excel" | "docx" | "pdf") {
     try {
       const m = await import("@/lib/export-dpgf");
-      if (kind === "excel") await m.exportDpgfExcel(lines);
-      else if (kind === "docx") await m.exportDpgfDocx(lines);
+      if (kind === "excel") await m.exportDpgfExcel(lines, company as never);
+      else if (kind === "docx") await m.exportDpgfDocx(lines, company as never);
       else await m.exportDpgfPdf(lines, company as never);
       toast.success("Export généré.");
     } catch (e) {

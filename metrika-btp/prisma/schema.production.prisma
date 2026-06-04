@@ -75,6 +75,11 @@ model Company {
   cnss          String?
   patente       String?
   capital       String?
+  country       String   @default("Maroc")
+  currency      String   @default("MAD")
+  siret         String?
+  vatNumber     String?
+  ape           String?
   address       String?
   city          String?
   phone         String?

@@ -13,7 +13,9 @@ import { Building2, Save, Upload, Landmark, ScrollText, Phone } from "lucide-rea
 
 interface CompanyForm {
   name: string; legalForm: string; capital: string;
+  country: string; currency: string;
   ice: string; rc: string; ifNumber: string; cnss: string; patente: string;
+  siret: string; vatNumber: string; ape: string;
   address: string; city: string; phone: string; email: string; website: string;
   bankName: string; rib: string; iban: string; swift: string;
   vatRate: number; quotePrefix: string; paymentTerms: string;
@@ -22,7 +24,9 @@ interface CompanyForm {
 
 const initial: CompanyForm = {
   name: "", legalForm: "SARL", capital: "",
+  country: "Maroc", currency: "MAD",
   ice: "", rc: "", ifNumber: "", cnss: "", patente: "",
+  siret: "", vatNumber: "", ape: "",
   address: "", city: "", phone: "", email: "", website: "",
   bankName: "", rib: "", iban: "", swift: "",
   vatRate: 20, quotePrefix: "DEV",
@@ -116,7 +120,10 @@ export default function ParametresPage() {
         body: JSON.stringify(form),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Échec");
-      toast.success("Fiche entreprise enregistrée. Le logo apparaîtra sur vos documents.");
+      const d = await res.json().catch(() => ({}));
+      const { setCompanyCache } = await import("@/lib/client-data");
+      setCompanyCache(d.company ?? null);
+      toast.success("Fiche entreprise enregistrée. Logo, devise et mentions sont appliqués à tous vos documents.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Enregistrement impossible");
     } finally {
@@ -146,8 +153,21 @@ export default function ParametresPage() {
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2"><Field label="Raison sociale"><Input value={form.name} onChange={set("name")} placeholder="Nom de l’entreprise" /></Field></div>
-            <Field label="Forme juridique"><Input value={form.legalForm} onChange={set("legalForm")} placeholder="SARL, SA…" /></Field>
-            <Field label="Capital social"><Input value={form.capital} onChange={set("capital")} placeholder="Ex : 100 000 MAD" /></Field>
+            <Field label="Forme juridique"><Input value={form.legalForm} onChange={set("legalForm")} placeholder="SARL, SA, SAS…" /></Field>
+            <Field label="Capital social"><Input value={form.capital} onChange={set("capital")} placeholder="Ex : 100 000" /></Field>
+            <Field label="Pays">
+              <select value={form.country} onChange={(e) => setForm((f) => ({ ...f, country: e.target.value }))} className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring">
+                <option>Maroc</option>
+                <option>France</option>
+                <option>International</option>
+              </select>
+            </Field>
+            <Field label="Devise des documents">
+              <select value={form.currency} onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))} className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring">
+                <option value="MAD">Dirham marocain (MAD)</option>
+                <option value="EUR">Euro (€)</option>
+              </select>
+            </Field>
           </CardContent>
         </Card>
 
@@ -174,16 +194,26 @@ export default function ParametresPage() {
           <CardHeader>
             <div className="flex items-center gap-2">
               <ScrollText className="size-5 text-gold-500" />
-              <CardTitle className="text-navy-900">Informations légales (Maroc)</CardTitle>
+              <CardTitle className="text-navy-900">Informations légales</CardTitle>
             </div>
-            <CardDescription>Identifiants obligatoires sur les documents officiels.</CardDescription>
+            <CardDescription>Renseignez les identifiants correspondant à votre pays — ils apparaissent en pied de tous les documents.</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2">
-            <Field label="ICE"><Input value={form.ice} onChange={set("ice")} placeholder="Identifiant Commun de l’Entreprise" /></Field>
-            <Field label="RC"><Input value={form.rc} onChange={set("rc")} placeholder="Registre de Commerce" /></Field>
-            <Field label="IF"><Input value={form.ifNumber} onChange={set("ifNumber")} placeholder="Identifiant Fiscal" /></Field>
-            <Field label="CNSS"><Input value={form.cnss} onChange={set("cnss")} placeholder="N° CNSS" /></Field>
-            <Field label="Patente"><Input value={form.patente} onChange={set("patente")} placeholder="Taxe professionnelle" /></Field>
+          <CardContent className="space-y-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gold-600">Maroc</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="ICE"><Input value={form.ice} onChange={set("ice")} placeholder="Identifiant Commun de l’Entreprise" /></Field>
+              <Field label="RC"><Input value={form.rc} onChange={set("rc")} placeholder="Registre de Commerce" /></Field>
+              <Field label="IF"><Input value={form.ifNumber} onChange={set("ifNumber")} placeholder="Identifiant Fiscal" /></Field>
+              <Field label="CNSS"><Input value={form.cnss} onChange={set("cnss")} placeholder="N° CNSS" /></Field>
+              <Field label="Patente"><Input value={form.patente} onChange={set("patente")} placeholder="Taxe professionnelle" /></Field>
+            </div>
+            <Separator />
+            <p className="text-xs font-semibold uppercase tracking-wider text-gold-600">France</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="SIRET"><Input value={form.siret} onChange={set("siret")} placeholder="N° SIRET (14 chiffres)" /></Field>
+              <Field label="N° TVA intracommunautaire"><Input value={form.vatNumber} onChange={set("vatNumber")} placeholder="FR…" /></Field>
+              <Field label="Code APE / NAF"><Input value={form.ape} onChange={set("ape")} placeholder="Ex : 4120A" /></Field>
+            </div>
           </CardContent>
         </Card>
 

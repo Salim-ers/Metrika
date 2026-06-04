@@ -14,6 +14,16 @@ export function formatMAD(value: number): string {
   }).format(value || 0);
 }
 
+/** Formate un montant dans la devise choisie (MAD ou EUR). */
+export function formatMoney(value: number, currency: string = "MAD"): string {
+  const cur = currency === "EUR" ? "EUR" : "MAD";
+  return new Intl.NumberFormat(cur === "EUR" ? "fr-FR" : "fr-MA", {
+    style: "currency",
+    currency: cur,
+    maximumFractionDigits: 2,
+  }).format(value || 0);
+}
+
 export function formatDate(d: Date | string): string {
   return new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" }).format(new Date(d));
 }

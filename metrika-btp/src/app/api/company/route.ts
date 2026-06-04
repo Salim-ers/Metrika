@@ -6,7 +6,8 @@ export const runtime = "nodejs";
 
 const FIELDS = [
   "name", "legalForm", "logoUrl", "stampUrl", "ice", "rc", "ifNumber", "cnss",
-  "patente", "capital", "address", "city", "phone", "email", "website",
+  "patente", "capital", "country", "currency", "siret", "vatNumber", "ape",
+  "address", "city", "phone", "email", "website",
   "bankName", "rib", "iban", "swift", "quotePrefix", "paymentTerms",
 ] as const;
 

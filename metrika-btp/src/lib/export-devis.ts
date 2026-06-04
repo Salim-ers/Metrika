@@ -1,6 +1,6 @@
 "use client";
 
-import { CompanyExport, downloadBlob, fmtMad, dataUrlToBytes, legalLines } from "@/lib/export-common";
+import { CompanyExport, downloadBlob, fmtMad, dataUrlToBytes, legalLines, moneyUnit } from "@/lib/export-common";
 import { createPdf } from "@/lib/pdf-kit";
 
 export interface DevisData {
@@ -26,6 +26,7 @@ export async function exportDevisPdf(d: DevisData): Promise<void> {
   const c = d.company;
   const k = await createPdf(c);
   const { C, W, M } = k;
+  const unit = moneyUnit(c);
   const rows = d.lines.filter((l) => l.designation.trim());
   const { ht, vat, ttc } = totals(d);
 
@@ -108,7 +109,7 @@ export async function exportDevisPdf(d: DevisData): Promise<void> {
   k.text(fmtMad(vat), totR, blockTop - 24, { size: 9.5, align: "right" });
   k.page.drawRectangle({ x: boxX, y: blockTop - 66, width: boxW, height: 28, color: C.NAVY });
   k.text("TOTAL TTC", boxX + 12, blockTop - 56, { size: 11, bold: true, color: C.WHITE });
-  k.text(fmtMad(ttc) + " MAD", totR, blockTop - 56, { size: 12, bold: true, color: C.GOLD, align: "right" });
+  k.text(fmtMad(ttc) + " " + unit, totR, blockTop - 56, { size: 12, bold: true, color: C.GOLD, align: "right" });
 
   // Cachet & signature (gauche), même hauteur de bloc
   const sigW = 240, sigBottom = blockTop - BLOCK_H;
@@ -152,6 +153,7 @@ export async function exportDevisExcel(d: DevisData): Promise<void> {
     { key: "quantity", width: 10 }, { key: "unitPrice", width: 14 }, { key: "total", width: 16 },
   ];
   const c = d.company;
+  const unit = moneyUnit(c);
   const logo = dataUrlToBytes(c?.logoUrl);
   if (logo) {
     const id = wb.addImage({ base64: (c!.logoUrl as string).split(",")[1], extension: logo.mime.includes("png") ? "png" : "jpeg" });
@@ -166,7 +168,7 @@ export async function exportDevisExcel(d: DevisData): Promise<void> {
   if (d.clientAddress) ws.addRow([d.clientAddress]);
   ws.addRow([`Date : ${d.dateLabel}    Validité : ${d.validity} j    TVA : ${d.vatRate} %`]);
   ws.addRow([]);
-  const hdr = ws.addRow(["Désignation", "U.", "Qté", "P.U. (MAD)", "Total HT (MAD)"]);
+  const hdr = ws.addRow(["Désignation", "U.", "Qté", `P.U. (${unit})`, `Total HT (${unit})`]);
   hdr.font = { bold: true, color: { argb: "FFFFFFFF" } };
   hdr.eachCell((cell) => { cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF14233F" } }; });
   for (const l of d.lines.filter((x) => x.designation.trim())) {
@@ -185,6 +187,7 @@ export async function exportDevisExcel(d: DevisData): Promise<void> {
 export async function exportDevisDocx(d: DevisData): Promise<void> {
   const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, ImageRun, HeadingLevel } = await import("docx");
   const c = d.company;
+  const unit = moneyUnit(c);
   const cell = (t: string, b = false, align: "left" | "right" = "left") =>
     new TableCell({ children: [new Paragraph({ alignment: align === "right" ? AlignmentType.RIGHT : AlignmentType.LEFT, children: [new TextRun({ text: t, bold: b })] })] });
 
@@ -211,9 +214,9 @@ export async function exportDevisDocx(d: DevisData): Promise<void> {
         ...head,
         new Paragraph({ children: [] }),
         new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows }),
-        new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun(`Total HT : ${fmtMad(ht)} MAD`)] }),
-        new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun(`TVA (${d.vatRate}%) : ${fmtMad(vat)} MAD`)] }),
-        new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: `Total TTC : ${fmtMad(ttc)} MAD`, bold: true })] }),
+        new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun(`Total HT : ${fmtMad(ht)} ${unit}`)] }),
+        new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun(`TVA (${d.vatRate}%) : ${fmtMad(vat)} ${unit}`)] }),
+        new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: `Total TTC : ${fmtMad(ttc)} ${unit}`, bold: true })] }),
         ...legalLines(c).map((ln) => new Paragraph({ children: [new TextRun({ text: ln, size: 14, color: "888888" })] })),
         ...(c?.paymentTerms ? [new Paragraph({ children: [new TextRun({ text: c.paymentTerms, size: 14, color: "888888" })] })] : []),
       ],

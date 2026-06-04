@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { formatMAD, formatDate } from "@/lib/utils";
+import { invalidatePrices } from "@/lib/client-data";
 import { LOTS_BTP, UNITS } from "@/lib/constants";
 import { Search, Plus, Library, Upload, Trash2, Sparkles, Loader2 } from "lucide-react";
 
@@ -72,6 +73,7 @@ export default function BibliothequePrixPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setItems((arr) => [data.item, ...arr]);
+      invalidatePrices();
       setForm(emptyForm);
       setShowForm(false);
       toast.success("Prix ajouté à la bibliothèque.");
@@ -82,6 +84,7 @@ export default function BibliothequePrixPage() {
 
   async function remove(id: string) {
     setItems((arr) => arr.filter((it) => it.id !== id));
+    invalidatePrices();
     await fetch(`/api/prices?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
   }
 
@@ -118,6 +121,7 @@ export default function BibliothequePrixPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       load();
+      invalidatePrices();
       toast.success(`${data.count} prix importés.`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Import impossible");

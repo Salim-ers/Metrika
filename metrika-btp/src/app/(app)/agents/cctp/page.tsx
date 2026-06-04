@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { LOTS_BTP, PROJECT_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { PdfDropzone } from "@/components/ui/pdf-dropzone";
+import { getCompany } from "@/lib/client-data";
 import { Loader2, FileText, ShieldCheck, FileDown, Sparkles, X, ScanText } from "lucide-react";
 
 interface Section { lot: string; content: string; validated?: boolean }
@@ -30,9 +31,7 @@ export default function CctpPage() {
   const [phase, setPhase] = useState("");
   const [company, setCompany] = useState<Record<string, unknown> | null>(null);
 
-  useEffect(() => {
-    fetch("/api/company").then((r) => (r.ok ? r.json() : { company: null })).then((d) => setCompany(d.company ?? null)).catch(() => {});
-  }, []);
+  useEffect(() => { getCompany().then(setCompany); }, []);
 
   function toggle(lot: string) {
     setSelected((s) => (s.includes(lot) ? s.filter((l) => l !== lot) : [...s, lot]));

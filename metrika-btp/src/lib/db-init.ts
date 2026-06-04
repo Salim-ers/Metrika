@@ -79,6 +79,25 @@ async function seed() {
   }
 }
 
+/**
+ * Évolutions de schéma idempotentes (PostgreSQL only). Ajoute les colonnes
+ * récentes aux bases déjà créées, sans migration manuelle. En local (SQLite)
+ * ces évolutions passent par `prisma db push`.
+ */
+async function ensureColumns() {
+  if (!/^postgres/i.test(process.env.DATABASE_URL ?? "")) return;
+  const alters = [
+    `ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "country" TEXT NOT NULL DEFAULT 'Maroc'`,
+    `ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "currency" TEXT NOT NULL DEFAULT 'MAD'`,
+    `ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "siret" TEXT`,
+    `ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "vatNumber" TEXT`,
+    `ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "ape" TEXT`,
+  ];
+  for (const a of alters) {
+    try { await prisma.$executeRawUnsafe(a); } catch (e) { console.warn("[db-init] alter ignoré:", (e as Error).message?.slice(0, 100)); }
+  }
+}
+
 async function doInit() {
   let tablesExist = true;
   try {
@@ -91,6 +110,7 @@ async function doInit() {
     console.log("[db-init] tables absentes → création du schéma…");
     await createSchema();
   }
+  await ensureColumns();
 
   // Seed seulement si aucun utilisateur (évite le travail à chaque démarrage).
   let userCount = 0;

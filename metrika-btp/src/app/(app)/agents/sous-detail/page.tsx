@@ -12,6 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { formatMAD } from "@/lib/utils";
 import { LOTS_BTP, UNITS } from "@/lib/constants";
 import { PdfDropzone } from "@/components/ui/pdf-dropzone";
+import { getCompany } from "@/lib/client-data";
 import { Loader2, Calculator, FileDown, Sparkles, Trash2, Plus, CheckCircle2, FileText, X } from "lucide-react";
 
 type CompType = "MAIN_OEUVRE" | "MATERIAUX" | "MATERIEL";
@@ -48,9 +49,7 @@ export default function SousDetailPage() {
   const [profitRate, setProfitRate] = useState(0.1);
   const [company, setCompany] = useState<Record<string, unknown> | null>(null);
 
-  useEffect(() => {
-    fetch("/api/company").then((r) => (r.ok ? r.json() : { company: null })).then((d) => setCompany(d.company ?? null)).catch(() => {});
-  }, []);
+  useEffect(() => { getCompany().then(setCompany); }, []);
 
   async function exportSd(kind: "excel" | "pdf") {
     try {
