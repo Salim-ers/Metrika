@@ -48,8 +48,40 @@ export async function generateCctp(params: {
   context?: string;
   planContext?: string;
 }): Promise<CctpSectionResult[]> {
-  // Génération en parallèle : le temps total ≈ celui d'une seule section
-  // (évite les dépassements de délai quand plusieurs lots sont demandés).
   const { lots, ...rest } = params;
-  return Promise.all(lots.map((lot) => generateCctpSection({ lot, ...rest })));
+
+  // Génération par vagues de CONCURRENCY lots : assez parallèle pour rester
+  // rapide, mais sans saturer l'API Claude (les rafales déclenchaient des
+  // erreurs 429 qui faisaient échouer TOUTE la génération avec Promise.all).
+  const CONCURRENCY = 3;
+  const results: CctpSectionResult[] = new Array(lots.length);
+  let failures = 0;
+
+  for (let i = 0; i < lots.length; i += CONCURRENCY) {
+    const batch = lots.slice(i, i + CONCURRENCY);
+    const settled = await Promise.allSettled(
+      batch.map((lot) => generateCctpSection({ lot, ...rest })),
+    );
+    settled.forEach((s, j) => {
+      const lot = batch[j];
+      if (s.status === "fulfilled") {
+        results[i + j] = s.value;
+      } else {
+        // Un lot en échec ne bloque plus les autres : on renvoie une section
+        // éditable signalant l'erreur, à régénérer/compléter par l'utilisateur.
+        failures++;
+        const reason = s.reason instanceof Error ? s.reason.message : "Erreur de génération";
+        results[i + j] = {
+          lot,
+          content: `## Section à régénérer\n\nLa génération automatique de ce lot a échoué : ${reason}\n\nRelancez la génération pour ce lot, ou rédigez la section manuellement.`,
+        };
+      }
+    });
+  }
+
+  // Si TOUS les lots ont échoué, on lève l'erreur (rien d'exploitable).
+  if (failures === lots.length) {
+    throw new Error("La génération du CCTP a échoué pour tous les lots. Vérifiez la clé API Claude et réessayez.");
+  }
+  return results;
 }

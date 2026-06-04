@@ -121,12 +121,18 @@ export async function exportCctpPdf(
   const tocPageCount = Math.max(1, Math.ceil(toc.length / ENTRIES_PER_PAGE));
   const dateLabel = meta?.dateLabel || new Date().toLocaleDateString("fr-FR");
 
-  // Logo (embarqué une fois).
+  // Logo + cachet (embarqués une fois).
   const logoBytes = dataUrlToBytes(company?.logoUrl);
   let logoImg: Awaited<ReturnType<typeof doc.embedPng>> | null = null;
   if (logoBytes) {
     try { logoImg = logoBytes.mime.includes("png") ? await doc.embedPng(logoBytes.bytes) : await doc.embedJpg(logoBytes.bytes); }
     catch { logoImg = null; }
+  }
+  const stampBytes = dataUrlToBytes(company?.stampUrl);
+  let stampImg: Awaited<ReturnType<typeof doc.embedPng>> | null = null;
+  if (stampBytes) {
+    try { stampImg = stampBytes.mime.includes("png") ? await doc.embedPng(stampBytes.bytes) : await doc.embedJpg(stampBytes.bytes); }
+    catch { stampImg = null; }
   }
 
   // ───────────── PAGE DE GARDE ─────────────
@@ -173,6 +179,12 @@ export async function exportCctpPdf(
   intervenant("MAITRE D'OUVRAGE", meta?.owner);
   intervenant("ARCHITECTE / MAITRISE D'ŒUVRE", meta?.architect);
   intervenant("BUREAU D'ETUDES TECHNIQUES", meta?.bet);
+
+  // Cachet de l'entreprise (signature officielle), au-dessus du bloc légal.
+  if (stampImg) {
+    const sw = 120, sh = (stampImg.height / stampImg.width) * sw;
+    cover.drawImage(stampImg, { x: W - M - sw - 6, y: M + 64, width: sw, height: sh, opacity: 0.95 });
+  }
 
   // Pied de page de garde : émetteur + mentions + date
   let fy = M + 30;
