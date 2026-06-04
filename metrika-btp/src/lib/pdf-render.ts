@@ -136,3 +136,35 @@ export async function extractPdfText(file: File): Promise<string> {
   await pdf.destroy();
   return text.trim();
 }
+
+/**
+ * Extrait le texte page par page en reconstituant les sauts de ligne à partir
+ * de la position verticale des fragments (préserve au mieux la mise en page
+ * d'origine lors d'une traduction fidèle).
+ */
+export async function extractPdfPages(file: File): Promise<string[]> {
+  const data = new Uint8Array(await file.arrayBuffer());
+  const pdf = await pdfjsLib.getDocument({ data }).promise;
+  const pages: string[] = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    let lastY: number | null = null;
+    let line = "";
+    const lines: string[] = [];
+    for (const it of content.items) {
+      if (!("str" in it)) continue;
+      const y = Math.round(it.transform[5]);
+      if (lastY !== null && Math.abs(y - lastY) > 2) {
+        lines.push(line.trimEnd());
+        line = "";
+      }
+      line += it.str + (it.hasEOL ? "" : " ");
+      lastY = y;
+    }
+    if (line.trim()) lines.push(line.trimEnd());
+    pages.push(lines.join("\n").replace(/\n{3,}/g, "\n\n").trim());
+  }
+  await pdf.destroy();
+  return pages;
+}
