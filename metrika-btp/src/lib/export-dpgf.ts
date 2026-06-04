@@ -123,49 +123,61 @@ export async function exportDpgfPdf(lines: DpgfExportLine[], company?: CompanyEx
   const desigX = M + 24;       // Désignation (aligné à gauche)
   const desigW = uX - desigX - 12;
   const head = () => {
-    k.page.drawRectangle({ x: M, y: k.y - 16, width: W - 2 * M, height: 20, color: C.NAVY });
-    k.text("N°", nX, k.y - 11, { size: 7, bold: true, color: C.WHITE });
-    k.text("DÉSIGNATION DES OUVRAGES", desigX, k.y - 11, { size: 7, bold: true, color: C.WHITE });
-    k.text("UNITÉ", uX, k.y - 11, { size: 7, bold: true, color: C.WHITE });
-    k.text("QTÉ", qtyR, k.y - 11, { size: 7, bold: true, color: C.WHITE, align: "right" });
-    k.text("P.U. HT", puR, k.y - 11, { size: 7, bold: true, color: C.WHITE, align: "right" });
-    k.text("MONTANT HT", totR, k.y - 11, { size: 7, bold: true, color: C.WHITE, align: "right" });
-    k.y -= 24;
+    k.page.drawRectangle({ x: M, y: k.y - 17, width: W - 2 * M, height: 20, color: C.NAVY });
+    const hb = k.y - 11; // baseline des en-têtes
+    k.text("N°", nX, hb, { size: 7.5, bold: true, color: C.WHITE });
+    k.text("DÉSIGNATION DES OUVRAGES", desigX, hb, { size: 7.5, bold: true, color: C.WHITE });
+    k.text("UNITÉ", uX, hb, { size: 7.5, bold: true, color: C.WHITE });
+    k.text("QTÉ", qtyR, hb, { size: 7.5, bold: true, color: C.WHITE, align: "right" });
+    k.text("P.U. HT", puR, hb, { size: 7.5, bold: true, color: C.WHITE, align: "right" });
+    k.text("MONTANT HT", totR, hb, { size: 7.5, bold: true, color: C.WHITE, align: "right" });
+    k.y -= 25;
   };
   head();
 
   let n = 0;
   let totalHT = 0;
+  let zebra = false;
   for (const g of groups) {
-    if (k.ensure(40)) head();
-    k.y -= 2;
-    k.page.drawRectangle({ x: M, y: k.y - 14, width: W - 2 * M, height: 17, color: C.GOLD });
+    if (k.ensure(48)) head();
+    // Bandeau de lot
+    k.y -= 4;
+    k.page.drawRectangle({ x: M, y: k.y - 15, width: W - 2 * M, height: 18, color: C.GOLD });
     k.text(g.lot.toUpperCase(), desigX, k.y - 10, { size: 8.5, bold: true, color: C.NAVY });
     k.y -= 22;
+    zebra = false;
     let sub = 0;
     for (const l of g.items) {
       n++;
       const amt = l.quantity * l.unitPrice;
       sub += amt; totalHT += amt;
-      const wl = k.wrap(l.designation, 8, false, desigW);
-      const rowH = wl.length * 10 + 6;
-      if (k.ensure(rowH + 4)) head();
-      k.text(String(n), nX, k.y, { size: 8, color: C.GREY });
-      wl.forEach((ln, i) => k.text(ln, desigX, k.y - i * 10, { size: 8, bold: i === 0 }));
-      if (l.quantitySource) k.text(`source : ${l.quantitySource}`, desigX, k.y - wl.length * 10 + 1, { size: 6.5, color: C.GREY });
-      k.text(l.unit, uX, k.y, { size: 8, color: C.GREY });
-      k.text(String(l.quantity), qtyR, k.y, { size: 8, align: "right" });
-      k.text(fmt(l.unitPrice), puR, k.y, { size: 8, align: "right" });
-      k.text(fmt(amt), totR, k.y, { size: 8, bold: true, align: "right" });
-      k.y -= rowH + (l.quantitySource ? 6 : 0);
-      k.hr(k.y + 3, C.LIGHT, 0.4);
+      const wl = k.wrap(l.designation, 8.5, true, desigW);
+      const srcH = l.quantitySource ? 9 : 0;
+      const rowH = Math.max(22, wl.length * 11 + 10 + srcH);
+      if (k.ensure(rowH)) { head(); zebra = false; }
+      const top = k.y;
+      // Bande zébrée (alternée) en guise de séparation — pas de trait qui barre le texte.
+      if (zebra) k.page.drawRectangle({ x: M, y: top - rowH, width: W - 2 * M, height: rowH, color: C.ZEBRA });
+      zebra = !zebra;
+      const base = top - 13; // baseline de la 1ʳᵉ ligne, alignée pour toutes les colonnes
+      k.text(String(n), nX, base, { size: 8, color: C.GREY });
+      wl.forEach((ln, i) => k.text(ln, desigX, base - i * 11, { size: 8.5, bold: i === 0, color: C.NAVY }));
+      if (l.quantitySource) k.text(`source : ${l.quantitySource}`, desigX, base - wl.length * 11 + 1, { size: 6.5, color: C.GREY });
+      k.text(l.unit, uX, base, { size: 8, color: C.GREY });
+      k.text(String(l.quantity), qtyR, base, { size: 8, align: "right", color: C.NAVY });
+      k.text(fmt(l.unitPrice), puR, base, { size: 8, align: "right", color: C.NAVY });
+      k.text(fmt(amt), totR, base, { size: 8, bold: true, align: "right", color: C.NAVY });
+      k.y = top - rowH;
     }
-    // Sous-total du lot
-    if (k.ensure(20)) head();
-    k.y -= 2;
-    k.text(`Sous-total — ${g.lot}`, puR, k.y, { size: 8.5, bold: true, color: C.GREY, align: "right" });
-    k.text(fmt(sub) + " " + unit, totR, k.y, { size: 8.5, bold: true, align: "right" });
-    k.y -= 16;
+    // Sous-total du lot (bloc à droite, sans trait traversant)
+    if (k.ensure(24)) head();
+    k.hr(k.y, C.LIGHT, 0.6);
+    k.y -= 6;
+    const stW = 300, stX = W - M - stW;
+    k.page.drawRectangle({ x: stX, y: k.y - 14, width: stW, height: 17, color: C.ZEBRA });
+    k.text(`Sous-total — ${g.lot}`, puR, k.y - 10, { size: 8.5, bold: true, color: C.GREY, align: "right" });
+    k.text(fmt(sub) + " " + unit, totR - 6, k.y - 10, { size: 8.5, bold: true, color: C.NAVY, align: "right" });
+    k.y -= 24;
   }
 
   // ── Totaux HT / TVA / TTC ──
