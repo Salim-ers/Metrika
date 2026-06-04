@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,9 +12,16 @@ import { LOTS_BTP, PROJECT_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { PdfDropzone } from "@/components/ui/pdf-dropzone";
 import { getCompany } from "@/lib/client-data";
-import { Loader2, FileText, ShieldCheck, FileDown, Sparkles, X, ScanText, ChevronDown, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
+import { Loader2, FileText, ShieldCheck, FileDown, Sparkles, X, ScanText, ChevronDown, ChevronsDownUp, ChevronsUpDown, Timer } from "lucide-react";
 
 interface Section { lot: string; content: string; validated?: boolean }
+
+/** Formate des secondes en mm:ss. */
+function fmtDuration(totalSec: number): string {
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
 
 export default function CctpPage() {
   const [selected, setSelected] = useState<string[]>([]);
@@ -31,8 +38,26 @@ export default function CctpPage() {
   const [phase, setPhase] = useState("");
   const [company, setCompany] = useState<Record<string, unknown> | null>(null);
   const [open, setOpen] = useState<Record<number, boolean>>({});
+  const [deep, setDeep] = useState(true); // mode exhaustif (multi-passes) par défaut
+  const [elapsed, setElapsed] = useState(0); // chronomètre (secondes)
+  const [lastDuration, setLastDuration] = useState<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => { getCompany().then(setCompany); }, []);
+  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
+
+  function startTimer() {
+    setElapsed(0);
+    setLastDuration(null);
+    const t0 = Date.now();
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
+    return t0;
+  }
+  function stopTimer(t0: number) {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    setLastDuration(Math.round((Date.now() - t0) / 1000));
+  }
 
   function toggle(lot: string) {
     setSelected((s) => (s.includes(lot) ? s.filter((l) => l !== lot) : [...s, lot]));
@@ -47,6 +72,7 @@ export default function CctpPage() {
   async function generate() {
     if (selected.length === 0) { toast.error("Sélectionnez au moins un lot."); return; }
     setBusy(true);
+    const t0 = startTimer();
     try {
       // Rastérisation des plans PDF côté navigateur (images légères pour Claude).
       const planImages: { data: string; mediaType: string }[] = [];
@@ -69,15 +95,17 @@ export default function CctpPage() {
       const res = await fetch("/api/cctp/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lots: selected, projectType, context, planImages }),
+        body: JSON.stringify({ lots: selected, projectType, context, planImages, deep }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setSections(data.sections.map((s: Section) => ({ ...s, validated: false })));
       setOpen({ 0: true }); // première section dépliée par défaut
       setPlanContext(data.planContext ?? "");
-      toast.success(`${data.sections.length} section(s) générée(s). Vérifiez puis validez.`);
+      stopTimer(t0);
+      toast.success(`${data.sections.length} section(s) générée(s) en ${fmtDuration(Math.round((Date.now() - t0) / 1000))}. Vérifiez puis validez.`);
     } catch (e) {
+      stopTimer(t0);
       toast.error(e instanceof Error ? e.message : "Erreur");
     } finally {
       setBusy(false);
@@ -194,10 +222,27 @@ export default function CctpPage() {
               <Textarea value={context} onChange={(e) => setContext(e.target.value)} placeholder="Contraintes du projet, normes spécifiques, niveau de finition…" />
             </div>
 
+            <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-muted/20 p-3 text-xs">
+              <input type="checkbox" checked={deep} onChange={(e) => setDeep(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-gold-500" />
+              <span>
+                <span className="font-semibold text-navy-800">Mode exhaustif (CCTP DCE complet)</span>
+                <span className="block text-muted-foreground">Plusieurs passes par lot pour un document long et détaillé. Génération plus longue.</span>
+              </span>
+            </label>
+
             <Button variant="gold" size="lg" className="w-full" disabled={busy} onClick={generate}>
               {busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-              {busy ? (phase || "Génération en cours…") : "Générer le CCTP"}
+              {busy ? `${phase || "Génération…"} ${fmtDuration(elapsed)}` : "Générer le CCTP"}
             </Button>
+
+            {(busy || lastDuration !== null) && (
+              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                <Timer className="size-3.5 text-gold-600" />
+                {busy
+                  ? <span>Temps écoulé : <span className="font-mono font-semibold text-navy-800">{fmtDuration(elapsed)}</span></span>
+                  : <span>Généré en <span className="font-mono font-semibold text-navy-800">{fmtDuration(lastDuration ?? 0)}</span></span>}
+              </div>
+            )}
           </CardContent>
         </Card>
 
