@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { FileStack, FileText, Table2, ReceiptText, Activity, CheckCircle2, Clock, ArrowRight } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -18,6 +19,14 @@ const STATUS_MAP: Record<string, { label: string; variant: "success" | "warning"
   ARCHIVED: { label: "Archivé", variant: "muted" },
 };
 
+const ACTIONS = [
+  { href: "/devis", label: "Nouveau devis", primary: true },
+  { href: "/agents/cctp", label: "Générer un CCTP" },
+  { href: "/agents/dpgf", label: "DPGF" },
+  { href: "/agents/sous-detail", label: "Sous-détail" },
+  { href: "/agents/pdf", label: "PDF & Images" },
+];
+
 async function getData() {
   try {
     const [docCount, cctpCount, dpgfCount, quoteCount, recentDocs, treatments] = await Promise.all([
@@ -34,64 +43,25 @@ async function getData() {
   }
 }
 
-export default async function DashboardPage() {
+function StatsSkeleton() {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="h-28 animate-pulse rounded-xl bg-muted/60" />
+      ))}
+    </div>
+  );
+}
+
+async function DashboardData() {
   const d = await getData();
-  // Données du graphique (placeholder : à brancher sur l'historique réel)
   const chart = [
     { mois: "Jan", documents: 0 }, { mois: "Fév", documents: 0 }, { mois: "Mar", documents: 0 },
     { mois: "Avr", documents: 2 }, { mois: "Mai", documents: 5 }, { mois: "Juin", documents: d.docCount },
   ];
 
-  const actions = [
-    { href: "/devis", label: "Nouveau devis", primary: true },
-    { href: "/agents/cctp", label: "Générer un CCTP" },
-    { href: "/agents/dpgf", label: "DPGF" },
-    { href: "/agents/sous-detail", label: "Sous-détail" },
-    { href: "/agents/pdf", label: "PDF & Images" },
-  ];
-
   return (
-    <div className="animate-fade-up">
-      {/* Hero d'accueil */}
-      <div className="relative mb-8 overflow-hidden rounded-2xl bg-gradient-to-br from-navy-950 via-navy-900 to-navy-800 p-8 text-white shadow-card sm:p-10">
-        <div className="pointer-events-none absolute -right-16 -top-16 size-64 rounded-full bg-gold-500/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-20 right-1/3 size-56 rounded-full bg-gold-400/10 blur-3xl" />
-        <div className="relative max-w-2xl">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-300">Metrika · Métrage & Chiffrage BTP</p>
-          <h1 className="mt-3 font-display text-3xl font-semibold leading-tight sm:text-4xl">
-            Bonjour, prêt à <span className="italic text-gold-400">chiffrer</span> ?
-          </h1>
-          <p className="mt-3 max-w-xl text-sm leading-relaxed text-navy-100/70">
-            Pilotez vos cahiers techniques, décompositions de prix, sous-détails et devis —
-            du métré au document officiel, aux couleurs de votre entreprise.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-2.5">
-            {actions.map((a) => (
-              <Link
-                key={a.href}
-                href={a.href}
-                className={
-                  a.primary
-                    ? "inline-flex items-center gap-1.5 rounded-lg bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-900 transition-colors hover:bg-gold-400"
-                    : "inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-white/90 transition-colors hover:border-gold-400/50 hover:bg-white/10"
-                }
-              >
-                {a.label} {a.primary && <ArrowRight className="size-4" />}
-              </Link>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {!d.ok && (
-        <Card className="mb-6 border-warning/40 bg-warning/5">
-          <CardContent className="py-4 text-sm text-navy-800">
-            Base de données non connectée. Lancez <code className="rounded bg-muted px-1.5 py-0.5">npm run db:push</code> puis{" "}
-            <code className="rounded bg-muted px-1.5 py-0.5">npm run db:seed</code> pour activer les données réelles.
-          </CardContent>
-        </Card>
-      )}
-
+    <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Documents générés" value={d.docCount} sub="tous types confondus" icon={FileStack} />
         <StatCard label="CCTP créés" value={d.cctpCount} sub="cahiers techniques" icon={FileText} />
@@ -178,6 +148,48 @@ export default async function DashboardPage() {
           )}
         </CardContent>
       </Card>
+    </>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <div className="animate-fade-up">
+      {/* Hero d'accueil — rendu instantanément */}
+      <div className="relative mb-8 overflow-hidden rounded-2xl bg-gradient-to-br from-navy-950 via-navy-900 to-navy-800 p-8 text-white shadow-card sm:p-10">
+        <div className="pointer-events-none absolute -right-16 -top-16 size-64 rounded-full bg-gold-500/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-20 right-1/3 size-56 rounded-full bg-gold-400/10 blur-3xl" />
+        <div className="relative max-w-2xl">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-300">Metrika · Métrage &amp; Chiffrage BTP</p>
+          <h1 className="mt-3 font-display text-3xl font-semibold leading-tight sm:text-4xl">
+            Bonjour, prêt à <span className="italic text-gold-400">chiffrer</span> ?
+          </h1>
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-navy-100/70">
+            Pilotez vos cahiers techniques, décompositions de prix, sous-détails et devis —
+            du métré au document officiel, aux couleurs de votre entreprise.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-2.5">
+            {ACTIONS.map((a) => (
+              <Link
+                key={a.href}
+                href={a.href}
+                className={
+                  a.primary
+                    ? "inline-flex items-center gap-1.5 rounded-lg bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-900 transition-colors hover:bg-gold-400"
+                    : "inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-white/90 transition-colors hover:border-gold-400/50 hover:bg-white/10"
+                }
+              >
+                {a.label} {a.primary && <ArrowRight className="size-4" />}
+              </Link>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Statistiques — diffusées dès qu'elles sont prêtes */}
+      <Suspense fallback={<StatsSkeleton />}>
+        <DashboardData />
+      </Suspense>
     </div>
   );
 }

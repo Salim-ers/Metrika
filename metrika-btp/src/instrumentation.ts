@@ -7,6 +7,8 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { ensureDb } = await import("@/lib/db-init");
-    await ensureDb();
+    // Préchauffage en arrière-plan : ne bloque PAS le démarrage du serveur.
+    // La connexion (login) attend de toute façon ensureDb() pour la sûreté.
+    void ensureDb();
   }
 }

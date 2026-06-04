@@ -42,7 +42,7 @@ async function createSchema() {
 async function seed() {
   const email = process.env.ADMIN_EMAIL ?? "admin@metrika.ma";
   const password = process.env.ADMIN_PASSWORD ?? "MetrikaMaroc2026!";
-  const passwordHash = await bcrypt.hash(password, 12);
+  const passwordHash = await bcrypt.hash(password, 10);
 
   await prisma.user.upsert({
     where: { email },
@@ -91,8 +91,24 @@ async function ensureColumns() {
     catch (e) { console.warn("[db-init] migration ignorée:", (e as Error).message?.slice(0, 120)); }
   };
 
+  // Une seule requête pour savoir si une migration est nécessaire → sinon on
+  // sort immédiatement (cas normal en régime établi : démarrage rapide).
+  let needCols = true;
+  let roleIsText = false;
+  try {
+    const rows = await prisma.$queryRawUnsafe<{ column_name: string; data_type: string }[]>(
+      `SELECT column_name, data_type FROM information_schema.columns
+       WHERE (table_name = 'Company' AND column_name = 'currency')
+          OR (table_name = 'User' AND column_name = 'role')`,
+    );
+    needCols = !rows.some((r) => r.column_name === "currency");
+    const role = rows.find((r) => r.column_name === "role");
+    roleIsText = !role || role.data_type === "text";
+  } catch { /* en cas de doute, on tente les migrations */ }
+  if (!needCols && roleIsText) return; // base à jour → rien à faire
+
   // Colonnes récentes (pays / devise / identifiants France).
-  for (const a of [
+  if (needCols) for (const a of [
     `ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "country" TEXT NOT NULL DEFAULT 'Maroc'`,
     `ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "currency" TEXT NOT NULL DEFAULT 'MAD'`,
     `ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "siret" TEXT`,
@@ -100,18 +116,7 @@ async function ensureColumns() {
     `ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "ape" TEXT`,
   ]) await run(a);
 
-  // Compatibilité : bases créées avec l'ancien schéma (enum/json). On convertit
-  // les colonnes en TEXT (sinon le seed de l'admin échoue → accès refusé).
-  // On ne le fait QUE si "User.role" n'est pas déjà en TEXT (évite de réécrire
-  // les tables à chaque démarrage).
-  let roleType = "text";
-  try {
-    const rows = await prisma.$queryRawUnsafe<{ data_type: string }[]>(
-      `SELECT data_type FROM information_schema.columns WHERE table_name = 'User' AND column_name = 'role'`,
-    );
-    roleType = rows?.[0]?.data_type ?? "text";
-  } catch { roleType = "text"; }
-  if (roleType === "text") return;
+  if (roleIsText) return; // colonnes ajoutées ; pas de conversion enum à faire
 
   console.log("[db-init] ancien schéma détecté (enum) → conversion en TEXT…");
   const toText = (tbl: string, col: string, def?: string) => [
@@ -149,9 +154,11 @@ async function doInit() {
   }
   await ensureColumns();
 
-  // Seed idempotent (upsert) : garantit que l'admin existe TOUJOURS avec le
-  // bon mot de passe, et auto-répare un éventuel compte cassé → plus d'accès refusé.
-  await seed();
+  // Seed uniquement si aucun utilisateur (évite un bcrypt coûteux à chaque
+  // démarrage). Après création de l'admin, on n'y revient plus → connexion rapide.
+  let userCount = 0;
+  try { userCount = await prisma.user.count(); } catch { userCount = 0; }
+  if (userCount === 0) { console.log("[db-init] seed initial…"); await seed(); }
 
   ready = true;
 }
