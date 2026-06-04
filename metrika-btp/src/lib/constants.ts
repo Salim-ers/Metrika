@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, FileStack, FileText, Table2, Calculator,
-  Library, ReceiptText, Settings, Bot,
+  Library, ReceiptText, Settings, LayoutGrid,
 } from "lucide-react";
 
 /** Lots BTP disponibles pour la génération de CCTP (multi-sélection). */
@@ -37,12 +37,12 @@ export const NAV = [
     items: [{ label: "Tableau de bord", href: "/dashboard", icon: LayoutDashboard }],
   },
   {
-    group: "Agents IA",
+    group: "Outils documentaires",
     items: [
-      { label: "Vue des agents", href: "/agents", icon: Bot },
-      { label: "Agent PDF & Images", href: "/agents/pdf", icon: FileStack },
+      { label: "Vue d’ensemble", href: "/agents", icon: LayoutGrid },
+      { label: "PDF & Images", href: "/agents/pdf", icon: FileStack },
       { label: "Générateur CCTP", href: "/agents/cctp", icon: FileText },
-      { label: "Conversion DPGF", href: "/agents/dpgf", icon: Table2 },
+      { label: "Décomposition DPGF", href: "/agents/dpgf", icon: Table2 },
       { label: "Sous-détail de prix", href: "/agents/sous-detail", icon: Calculator },
     ],
   },

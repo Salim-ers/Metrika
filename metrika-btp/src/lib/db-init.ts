@@ -86,16 +86,53 @@ async function seed() {
  */
 async function ensureColumns() {
   if (!/^postgres/i.test(process.env.DATABASE_URL ?? "")) return;
-  const alters = [
+  const run = async (sql: string) => {
+    try { await prisma.$executeRawUnsafe(sql); }
+    catch (e) { console.warn("[db-init] migration ignorée:", (e as Error).message?.slice(0, 120)); }
+  };
+
+  // Colonnes récentes (pays / devise / identifiants France).
+  for (const a of [
     `ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "country" TEXT NOT NULL DEFAULT 'Maroc'`,
     `ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "currency" TEXT NOT NULL DEFAULT 'MAD'`,
     `ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "siret" TEXT`,
     `ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "vatNumber" TEXT`,
     `ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "ape" TEXT`,
+  ]) await run(a);
+
+  // Compatibilité : bases créées avec l'ancien schéma (enum/json). On convertit
+  // les colonnes en TEXT (sinon le seed de l'admin échoue → accès refusé).
+  // On ne le fait QUE si "User.role" n'est pas déjà en TEXT (évite de réécrire
+  // les tables à chaque démarrage).
+  let roleType = "text";
+  try {
+    const rows = await prisma.$queryRawUnsafe<{ data_type: string }[]>(
+      `SELECT data_type FROM information_schema.columns WHERE table_name = 'User' AND column_name = 'role'`,
+    );
+    roleType = rows?.[0]?.data_type ?? "text";
+  } catch { roleType = "text"; }
+  if (roleType === "text") return;
+
+  console.log("[db-init] ancien schéma détecté (enum) → conversion en TEXT…");
+  const toText = (tbl: string, col: string, def?: string) => [
+    ...(def !== undefined ? [`ALTER TABLE "${tbl}" ALTER COLUMN "${col}" DROP DEFAULT`] : []),
+    `ALTER TABLE "${tbl}" ALTER COLUMN "${col}" TYPE TEXT USING "${col}"::text`,
+    ...(def !== undefined ? [`ALTER TABLE "${tbl}" ALTER COLUMN "${col}" SET DEFAULT '${def}'`] : []),
   ];
-  for (const a of alters) {
-    try { await prisma.$executeRawUnsafe(a); } catch (e) { console.warn("[db-init] alter ignoré:", (e as Error).message?.slice(0, 100)); }
-  }
+  const conversions = [
+    ...toText("User", "role", "ADMIN"),
+    ...toText("Document", "kind"),
+    ...toText("Document", "status", "DRAFT"),
+    ...toText("Treatment", "agent"),
+    ...toText("Treatment", "status", "QUEUED"),
+    ...toText("Treatment", "inputMeta"),
+    ...toText("Treatment", "outputMeta"),
+    ...toText("Cctp", "status", "DRAFT"),
+    ...toText("Dpgf", "status", "PENDING_REVIEW"),
+    ...toText("SousDetail", "status", "DRAFT"),
+    ...toText("SousDetailComponent", "type"),
+  ];
+  for (const s of conversions) await run(s);
 }
 
 async function doInit() {
@@ -112,17 +149,9 @@ async function doInit() {
   }
   await ensureColumns();
 
-  // Seed seulement si aucun utilisateur (évite le travail à chaque démarrage).
-  let userCount = 0;
-  try {
-    userCount = await prisma.user.count();
-  } catch {
-    userCount = 0;
-  }
-  if (userCount === 0) {
-    console.log("[db-init] seed des données de départ…");
-    await seed();
-  }
+  // Seed idempotent (upsert) : garantit que l'admin existe TOUJOURS avec le
+  // bon mot de passe, et auto-répare un éventuel compte cassé → plus d'accès refusé.
+  await seed();
 
   ready = true;
 }
