@@ -61,13 +61,10 @@ export default function LoginPage() {
           <div className="anim-brand">
             <MetrikaLogo variant="light" size="xl" />
           </div>
-          <p className="anim-tagline mt-10 max-w-md font-display text-3xl font-semibold leading-tight">
-            Du <span className="italic text-gold-400">métré</span> au{" "}
-            <span className="italic text-gold-400">devis</span>.
-          </p>
-          <p className="anim-tagline mt-3 max-w-sm text-sm leading-relaxed text-navy-100/60">
-            CCTP, DPGF, sous-détails de prix et devis — votre plateforme privée
-            de métrage et de chiffrage BTP.
+          <p className="anim-tagline mt-10 max-w-md font-display text-2xl font-semibold leading-snug text-navy-100/80">
+            Votre plateforme privée de{" "}
+            <span className="italic text-gold-400">métrage</span> et de{" "}
+            <span className="italic text-gold-400">chiffrage</span> BTP.
           </p>
         </div>
 

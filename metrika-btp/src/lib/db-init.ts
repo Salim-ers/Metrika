@@ -154,11 +154,12 @@ async function doInit() {
   }
   await ensureColumns();
 
-  // Seed uniquement si aucun utilisateur (évite un bcrypt coûteux à chaque
-  // démarrage). Après création de l'admin, on n'y revient plus → connexion rapide.
-  let userCount = 0;
-  try { userCount = await prisma.user.count(); } catch { userCount = 0; }
-  if (userCount === 0) { console.log("[db-init] seed initial…"); await seed(); }
+  // Seed à chaque démarrage d'instance (mis en cache par `ready`, donc au plus
+  // une fois par instance) : l'admin est resynchronisé avec ADMIN_EMAIL /
+  // ADMIN_PASSWORD via un upsert idempotent — indispensable pour que la
+  // connexion reflète toujours les variables d'environnement actuelles.
+  // La société et la bibliothèque de prix ne sont créées que si absentes.
+  try { await seed(); } catch (e) { console.warn("[db-init] seed:", (e as Error).message?.slice(0, 160)); }
 
   ready = true;
 }
