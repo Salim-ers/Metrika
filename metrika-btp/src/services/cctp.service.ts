@@ -35,9 +35,10 @@ Type de projet : ${params.projectType ?? "non précisé"}
 Contexte / exigences particulières : ${params.context ?? "aucune"}
 ${params.planContext ? `\nSynthèse des plans du projet (à utiliser pour adapter les prescriptions) :\n${params.planContext}` : ""}
 
-Rédige la section CCTP de ce lot.`;
+Rédige la section CCTP de ce lot : claire, structurée et complète, mais SANS remplissage ni redites. Va à l'essentiel (prescriptions utiles, normes/DTU pertinents).`;
 
-  const res = await runClaude<CctpSectionResult>({ system: CCTP_PROMPT, user, schema: CCTP_SCHEMA, maxTokens: 16000 });
+  // 12000 tokens : assez pour une section complète sans troncature, plus rapide que 16000.
+  const res = await runClaude<CctpSectionResult>({ system: CCTP_PROMPT, user, schema: CCTP_SCHEMA, maxTokens: 12000 });
   // Garde-fou : si le modèle a renvoyé un objet sans contenu, on évite un export vide.
   return { lot: res.lot || params.lot, content: res.content ?? "" };
 }

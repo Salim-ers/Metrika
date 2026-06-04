@@ -157,16 +157,21 @@ export async function exportCctpPdf(
   }
   cy -= 14;
 
-  // Encadré C.C.T.P
-  const boxH = lots.length ? 116 : 96;
-  cover.drawRectangle({ x: M + 30, y: cy - boxH, width: W - 2 * (M + 30), height: boxH, borderColor: NAVY, borderWidth: 1.5, color: rgb(0.97, 0.97, 0.98) });
-  let by = cy - 34;
-  center(cover, "C.C.T.P", bold, 34, NAVY, by); by -= 22;
-  center(cover, "(Cahier des Clauses Techniques Particulieres)", font, 10, GREY, by); by -= 24;
-  if (lots.length) {
-    center(cover, lots.length === 1 ? `LOT : ${lots[0]}` : `LOTS (${lots.length})`, bold, 13, NAVY, by); by -= 16;
-    if (lots.length > 1) center(cover, lots.join("  •  "), font, 8.5, GREY, by);
-  }
+  // Encadré C.C.T.P — le libellé du/des lot(s) est renvoyé à la ligne pour rester
+  // DANS le cadre, et la hauteur du cadre s'adapte au nombre de lignes.
+  const boxX = M + 30;
+  const boxW = W - 2 * (M + 30);
+  const innerW = boxW - 28;
+  const lotLabel = lots.length === 1 ? `LOT : ${lots[0]}` : lots.length > 1 ? `LOTS (${lots.length})` : "";
+  const lotLines = lotLabel ? wrap(lotLabel, bold, 13, innerW) : [];
+  const listLines = lots.length > 1 ? wrap(lots.join("  •  "), font, 8.5, innerW) : [];
+  const boxH = 88 + lotLines.length * 17 + listLines.length * 11;
+  cover.drawRectangle({ x: boxX, y: cy - boxH, width: boxW, height: boxH, borderColor: NAVY, borderWidth: 1.5, color: rgb(0.97, 0.97, 0.98) });
+  let by = cy - 32;
+  center(cover, "C.C.T.P", bold, 34, NAVY, by); by -= 20;
+  center(cover, "(Cahier des Clauses Techniques Particulieres)", font, 10, GREY, by); by -= 22;
+  for (const ln of lotLines) { center(cover, ln, bold, 13, NAVY, by); by -= 17; }
+  for (const ln of listLines) { center(cover, ln, font, 8.5, GREY, by); by -= 11; }
   cy -= boxH + 30;
 
   // Intervenants
