@@ -72,6 +72,7 @@ export default function CctpPage() {
   async function generate() {
     if (selected.length === 0) { toast.error("Sélectionnez au moins un lot."); return; }
     setBusy(true);
+    setSections([]);
     const t0 = startTimer();
     try {
       // Rastérisation des plans PDF côté navigateur (images légères pour Claude).
@@ -91,19 +92,51 @@ export default function CctpPage() {
         }
       }
 
-      setPhase(planImages.length ? "Analyse des plans + génération…" : "Génération…");
-      const res = await fetch("/api/cctp/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lots: selected, projectType, context, planImages, deep }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setSections(data.sections.map((s: Section) => ({ ...s, validated: false })));
-      setOpen({ 0: true }); // première section dépliée par défaut
-      setPlanContext(data.planContext ?? "");
+      const post = (payload: object) =>
+        fetch("/api/cctp/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }).then(async (r) => ({ ok: r.ok, d: await r.json() }));
+
+      // 1) Analyse des plans (1 requête courte) si des plans sont fournis.
+      let planCtx = "";
+      if (planImages.length) {
+        setPhase("Analyse des plans…");
+        const a = await post({ analyze: true, planImages });
+        if (!a.ok) throw new Error(a.d?.error || "Analyse des plans impossible.");
+        planCtx = a.d?.planContext ?? "";
+      }
+      setPlanContext(planCtx);
+
+      // 2) Génération lot par lot ; pour chaque lot, les passes sont lancées en
+      //    PARALLÈLE (1 requête HTTP = 1 passe = 1 appel IA court, sous la limite).
+      const passCountOf = (lot: string) => (deep ? (/gros\s*[œo]e?uvre/i.test(lot) ? 3 : 2) : 1);
+      const built: Section[] = [];
+      let anyFail = false;
+      for (let li = 0; li < selected.length; li++) {
+        const lot = selected[li];
+        const pc = passCountOf(lot);
+        setPhase(`${lot} (${li + 1}/${selected.length})…`);
+        const passResults = await Promise.all(
+          Array.from({ length: pc }, (_, pi) =>
+            post({ lot, projectType, context, planContext: planCtx, deep, passIndex: pi }),
+          ),
+        );
+        const content = passResults
+          .map(({ ok, d }, i) => {
+            if (ok && d?.content) return d.content as string;
+            anyFail = true;
+            return `## Partie ${i + 1} — à régénérer\n\n${(d && d.error) || "Échec de génération."}`;
+          })
+          .join("\n\n");
+        built.push({ lot, content, validated: false });
+        setSections([...built]); // affichage progressif au fil des lots
+        if (built.length === 1) setOpen({ 0: true });
+      }
+      if (built.length === 0) throw new Error("Aucune section générée.");
       stopTimer(t0);
-      toast.success(`${data.sections.length} section(s) générée(s) en ${fmtDuration(Math.round((Date.now() - t0) / 1000))}. Vérifiez puis validez.`);
+      toast.success(`${built.length} section(s) générée(s) en ${fmtDuration(Math.round((Date.now() - t0) / 1000))}.${anyFail ? " Certaines parties sont à régénérer." : ""}`);
     } catch (e) {
       stopTimer(t0);
       toast.error(e instanceof Error ? e.message : "Erreur");

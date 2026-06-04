@@ -37,8 +37,8 @@ ${params.planContext ? `\nSynthèse des plans du projet (à utiliser pour adapte
 
 Rédige la section CCTP de ce lot, niveau économiste senior, intégrable directement à un DCE réel. Document COMPLET et DÉTAILLÉ : traite tous les postes du lot avec, pour chacun, fourniture / mise en œuvre / normes / contrôles / tolérances / interfaces. Aucune synthèse, aucun résumé.`;
 
-  // 16000 tokens : profondeur DCE (document long et détaillé) sans troncature.
-  const res = await runClaude<CctpSectionResult>({ system: CCTP_PROMPT, user, schema: CCTP_SCHEMA, maxTokens: 16000 });
+  // 12000 tokens : section complète sans troncature, en restant sous la limite serverless.
+  const res = await runClaude<CctpSectionResult>({ system: CCTP_PROMPT, user, schema: CCTP_SCHEMA, maxTokens: 12000 });
   // Garde-fou : si le modèle a renvoyé un objet sans contenu, on évite un export vide.
   return { lot: res.lot || params.lot, content: res.content ?? "" };
 }
@@ -114,6 +114,42 @@ Pour chaque poste (sous-titre ###) : fourniture, mise en œuvre, normes, contrô
   });
   if (settled.every((s) => s.status === "rejected")) throw new Error("Génération du lot impossible.");
   return { lot: params.lot, content: parts.join("\n\n") };
+}
+
+/** Nombre de passes pour un lot (1 si non exhaustif). */
+export function cctpPassCount(lot: string, deep?: boolean): number {
+  return deep ? passesFor(lot).length : 1;
+}
+
+/**
+ * Génère UNE passe d'un lot (une seule requête IA courte). Orchestré côté client
+ * pour rester sous la limite de durée des fonctions serverless : 1 requête HTTP
+ * = 1 appel IA. passIndex sélectionne la partie à rédiger.
+ */
+export async function generateCctpPass(params: {
+  lot: string;
+  projectType?: string;
+  context?: string;
+  planContext?: string;
+  deep?: boolean;
+  passIndex: number;
+}): Promise<{ content: string; passCount: number; label: string }> {
+  if (!params.deep) {
+    const r = await generateCctpSection(params);
+    return { content: r.content, passCount: 1, label: params.lot };
+  }
+  const passes = passesFor(params.lot);
+  const pass = passes[Math.max(0, Math.min(params.passIndex, passes.length - 1))];
+  const user = `${baseUser(params)}
+
+Rédige UNIQUEMENT, de façon EXHAUSTIVE et au niveau économiste senior, les chapitres suivants :
+${pass.chapters}
+
+Pour chaque poste (sous-titre ###) : fourniture, mise en œuvre, normes, contrôles, tolérances, interfaces. Ne rédige PAS les autres chapitres du lot (ils sont traités séparément). Aucune synthèse, aucun résumé.`;
+  // 11000 tokens/passe : chaque appel finit confortablement sous la limite serverless,
+  // la longueur totale vient du cumul des passes.
+  const res = await runClaude<CctpSectionResult>({ system: CCTP_PROMPT, user, schema: CCTP_SCHEMA, maxTokens: 11000 });
+  return { content: res.content?.trim() ?? "", passCount: passes.length, label: pass.label };
 }
 
 export async function generateCctp(params: {
