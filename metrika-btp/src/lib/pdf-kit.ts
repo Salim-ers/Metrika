@@ -111,6 +111,17 @@ export async function createPdf(company?: CompanyExport | null) {
     });
   };
 
+  /** Cachet de l'entreprise (signature officielle) en bas à droite de la page courante. */
+  const stamp = (opts?: { size?: number; label?: string }) => {
+    if (!stampImg) return;
+    const sw = opts?.size ?? 110;
+    const sh = (stampImg.height / stampImg.width) * sw;
+    const sy = Math.max(M + FOOT + 6, st.y - sh);
+    if (opts?.label) text(opts.label, W - M - sw, sy + sh + 4, { size: 7, color: C.GREY });
+    st.page.drawImage(stampImg, { x: W - M - sw, y: sy, width: sw, height: sh, opacity: 0.95 });
+    st.y = Math.min(st.y, sy - 6);
+  };
+
   const finish = async (filename: string) => {
     footers();
     const { downloadBlob } = await import("@/lib/export-common");
@@ -123,6 +134,6 @@ export async function createPdf(company?: CompanyExport | null) {
     get y() { return st.y; },
     set y(v: number) { st.y = v; },
     logoImg, stampImg,
-    safe, tw, text, wrap, newPage, ensure, hr, header, footers, finish,
+    safe, tw, text, wrap, newPage, ensure, hr, header, footers, stamp, finish,
   };
 }

@@ -53,7 +53,8 @@ async function exportLatinPdf(pages: string[], company?: CompanyExport | null, m
     }
   });
 
-  drawStamp(k);
+  k.y -= 30;
+  k.stamp({ label: "Cachet et signature" });
   await k.finish(`traduction-${fileBase(meta)}.pdf`);
 }
 
@@ -172,14 +173,6 @@ async function exportArabicPdf(pages: string[], company?: CompanyExport | null, 
   });
 
   downloadBlob(new Blob([(await doc.save()) as BlobPart], { type: "application/pdf" }), `traduction-${fileBase(meta)}.pdf`);
-}
-
-/** Dessine le cachet (si présent) en bas à droite de la page courante du kit. */
-function drawStamp(k: Awaited<ReturnType<typeof createPdf>>) {
-  if (!k.stampImg) return;
-  const sw = 110, sh = (k.stampImg.height / k.stampImg.width) * sw;
-  const sy = Math.max(k.M + k.FOOT + 6, k.y - sh);
-  k.page.drawImage(k.stampImg, { x: k.W - k.M - sw, y: sy, width: sw, height: sh, opacity: 0.95 });
 }
 
 // ── DOCX (RTL natif pour l'arabe — recommandé pour un rendu parfait) ──

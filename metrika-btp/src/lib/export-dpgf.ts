@@ -112,16 +112,24 @@ export async function exportDpgfPdf(lines: DpgfExportLine[], company?: CompanyEx
     if (g) g.items.push(l); else groups.push({ lot, items: [l] });
   }
 
-  const totR = W - M - 8, puR = W - M - 92, qtyR = W - M - 162, uX = W - M - 206, nX = M + 6, desigX = M + 32;
-  const desigW = uX - desigX - 8;
+  // Géométrie des colonnes (de droite à gauche) avec marges franches pour éviter
+  // tout chevauchement entre désignation / unité / quantité / P.U. / montant.
+  const right = W - M;
+  const totR = right;          // Montant HT (aligné à droite)
+  const puR = right - 84;      // P.U. HT (aligné à droite)
+  const qtyR = puR - 64;       // Quantité (aligné à droite)
+  const uX = qtyR - 74;        // Unité (aligné à gauche)
+  const nX = M + 4;            // N°
+  const desigX = M + 24;       // Désignation (aligné à gauche)
+  const desigW = uX - desigX - 12;
   const head = () => {
     k.page.drawRectangle({ x: M, y: k.y - 16, width: W - 2 * M, height: 20, color: C.NAVY });
-    k.text("N°", nX, k.y - 11, { size: 7.5, bold: true, color: C.WHITE });
-    k.text("DÉSIGNATION DES OUVRAGES", desigX, k.y - 11, { size: 7.5, bold: true, color: C.WHITE });
-    k.text("UNITÉ", uX, k.y - 11, { size: 7.5, bold: true, color: C.WHITE });
-    k.text("QUANTITÉ", qtyR, k.y - 11, { size: 7.5, bold: true, color: C.WHITE, align: "right" });
-    k.text("P.U. HT", puR, k.y - 11, { size: 7.5, bold: true, color: C.WHITE, align: "right" });
-    k.text("MONTANT HT", totR, k.y - 11, { size: 7.5, bold: true, color: C.WHITE, align: "right" });
+    k.text("N°", nX, k.y - 11, { size: 7, bold: true, color: C.WHITE });
+    k.text("DÉSIGNATION DES OUVRAGES", desigX, k.y - 11, { size: 7, bold: true, color: C.WHITE });
+    k.text("UNITÉ", uX, k.y - 11, { size: 7, bold: true, color: C.WHITE });
+    k.text("QTÉ", qtyR, k.y - 11, { size: 7, bold: true, color: C.WHITE, align: "right" });
+    k.text("P.U. HT", puR, k.y - 11, { size: 7, bold: true, color: C.WHITE, align: "right" });
+    k.text("MONTANT HT", totR, k.y - 11, { size: 7, bold: true, color: C.WHITE, align: "right" });
     k.y -= 24;
   };
   head();
@@ -172,5 +180,7 @@ export async function exportDpgfPdf(lines: DpgfExportLine[], company?: CompanyEx
   k.text("TOTAL TTC", boxX + 12, k.y - 16, { size: 11, bold: true, color: C.WHITE });
   k.text(fmt(ttc) + " " + unit, totR, k.y - 16, { size: 12, bold: true, color: C.GOLD, align: "right" });
 
+  k.y -= 40;
+  k.stamp({ label: "Cachet et signature" });
   await k.finish("dpgf-metrika.pdf");
 }

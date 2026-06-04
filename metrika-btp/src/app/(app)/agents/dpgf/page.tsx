@@ -56,32 +56,41 @@ export default function DpgfPage() {
     }
     setBusy(true);
     try {
-      // Rastérisation budgétée : on dégrade automatiquement plutôt que d'échouer.
+      // Stratégie « texte d'abord » : on EXTRAIT le texte du PDF (très léger,
+      // aucune limite de taille pour un CCTP textuel). On ne rastérise en
+      // images QUE les PDF scannés (sans texte sélectionnable), en budget.
+      let extractedText = "";
       const cctpImages: { data: string; mediaType: string }[] = [];
       if (cctpFiles.length > 0) {
         setPhase("Lecture du CCTP…");
-        const { rasterizePdfBudgeted } = await import("@/lib/pdf-render");
-        // Budget réparti entre les fichiers pour rester sous la limite API (~4,5 Mo).
-        const perFile = Math.floor(3_600_000 / cctpFiles.length);
-        let skipped = 0;
+        const { extractPdfText, rasterizePdfBudgeted } = await import("@/lib/pdf-render");
+        const scanned: string[] = [];
         for (const f of cctpFiles) {
-          const r = await rasterizePdfBudgeted(f, { budgetChars: perFile });
-          cctpImages.push(...r.images);
-          skipped += r.pagesSkipped;
+          const t = await extractPdfText(f).catch(() => "");
+          if (t && t.length > 150) {
+            extractedText += `\n\n===== ${f.name} =====\n${t}`;
+          } else {
+            // PDF scanné : on rastérise (budgété) en dernier recours.
+            const r = await rasterizePdfBudgeted(f);
+            cctpImages.push(...r.images);
+            scanned.push(f.name);
+          }
         }
-        if (cctpImages.length === 0) {
-          toast.error("CCTP illisible ou vide. Collez le texte du CCTP à la place.");
-          setBusy(false); setPhase(""); return;
+        if (scanned.length) {
+          toast.message(`${scanned.length} PDF scanné(s) lu(s) en image (qualité réduite si volumineux).`);
         }
-        if (skipped > 0) {
-          toast.warning(`${skipped} page(s) ignorée(s) (CCTP volumineux). Complétez au besoin en collant le texte.`);
-        }
+      }
+
+      const fullText = [cctpText, extractedText].filter((s) => s && s.trim()).join("\n\n");
+      if (!fullText.trim() && cctpImages.length === 0) {
+        toast.error("CCTP illisible ou vide. Collez le texte du CCTP à la place.");
+        setBusy(false); setPhase(""); return;
       }
 
       setPhase("Analyse…");
       const res = await fetch("/api/dpgf/convert", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cctpText, planNotes, cctpImages }),
+        body: JSON.stringify({ cctpText: fullText, planNotes, cctpImages }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);

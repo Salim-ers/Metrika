@@ -17,6 +17,13 @@ export async function POST(req: NextRequest) {
   }
   const tooBig = imagePayloadError(images);
   if (tooBig) return NextResponse.json({ error: tooBig }, { status: 413 });
+  // Cap large mais réel (limite de contexte du modèle) pour le texte extrait.
+  if (typeof cctpText === "string" && cctpText.length > 800_000) {
+    return NextResponse.json(
+      { error: "CCTP texte trop long (dépasse la fenêtre de contexte). Scindez le document en lots." },
+      { status: 413 },
+    );
+  }
   try {
     const lines = await cctpToDpgf({ cctpText, planNotes, images });
     return NextResponse.json({ lines });
