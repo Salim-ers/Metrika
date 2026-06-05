@@ -122,10 +122,19 @@ export async function createPdf(company?: CompanyExport | null) {
     st.y = Math.min(st.y, sy - 6);
   };
 
-  const finish = async (filename: string) => {
+  /**
+   * Termine le PDF : applique les pieds de page et renvoie les octets.
+   * Par défaut, déclenche aussi le téléchargement ; passer { download: false }
+   * pour récupérer seulement les octets (ex: enregistrement dans une fiche client).
+   */
+  const finish = async (filename: string, opts?: { download?: boolean }): Promise<Uint8Array> => {
     footers();
-    const { downloadBlob } = await import("@/lib/export-common");
-    downloadBlob(new Blob([(await doc.save()) as BlobPart], { type: "application/pdf" }), filename);
+    const bytes = (await doc.save()) as Uint8Array;
+    if (opts?.download !== false) {
+      const { downloadBlob } = await import("@/lib/export-common");
+      downloadBlob(new Blob([bytes as BlobPart], { type: "application/pdf" }), filename);
+    }
+    return bytes;
   };
 
   return {

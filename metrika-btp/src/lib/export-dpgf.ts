@@ -98,7 +98,7 @@ export async function exportDpgfDocx(lines: DpgfExportLine[], company?: CompanyE
 }
 
 // ── PDF officiel (kit Metrika) ────────────────────────────────────
-export async function exportDpgfPdf(lines: DpgfExportLine[], company?: CompanyExport | null, vatRate = 20) {
+export async function exportDpgfPdf(lines: DpgfExportLine[], company?: CompanyExport | null, vatRate = 20, opts?: { download?: boolean }): Promise<Uint8Array> {
   const k = await createPdf(company);
   const { C, W, M } = k;
   const unit = moneyUnit(company);
@@ -194,5 +194,5 @@ export async function exportDpgfPdf(lines: DpgfExportLine[], company?: CompanyEx
 
   k.y -= 40;
   k.stamp({ label: "Cachet et signature" });
-  await k.finish("dpgf-metrika.pdf");
+  return k.finish("dpgf-metrika.pdf", opts);
 }

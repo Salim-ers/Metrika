@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { MetrikaLogo } from "@/components/layout/metrika-logo";
 import { formatMoney, formatDate, buildQuoteNumber } from "@/lib/utils";
 import { getCompany, getPrices } from "@/lib/client-data";
+import { SaveToClient } from "@/components/clients/save-to-client";
 import { useCurrency, convertAmount } from "@/lib/use-currency";
 import { UNITS } from "@/lib/constants";
 import { Plus, Trash2, FileDown, CheckCircle2, ReceiptText, Library, Upload, Loader2, Search, Copy, ChevronDown } from "lucide-react";
@@ -193,6 +194,18 @@ export default function DevisPage() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Export impossible");
     }
+  }
+
+  // Produit le PDF du devis SANS le télécharger (pour l'enregistrer dans un client).
+  async function buildDevisBytes() {
+    const fresh = await getCompany(true);
+    const m = await import("@/lib/export-devis");
+    const data = {
+      quoteNumber, dateLabel: formatDate(today), validity, vatRate,
+      clientName, clientAddress, projectName, lines,
+      company: { ...(fresh as object), currency } as never,
+    };
+    return m.exportDevisPdf(data, { download: false });
   }
 
   return (
@@ -387,6 +400,11 @@ export default function DevisPage() {
             <Button variant="outline" disabled={!validated} onClick={() => exportDevis("docx")}><FileDown className="size-4" /> DOCX</Button>
             <Button variant="gold" disabled={!validated} onClick={() => exportDevis("pdf")}><FileDown className="size-4" /> PDF</Button>
           </div>
+          {validated && (
+            <div className="flex justify-end">
+              <SaveToClient category="Devis" filename={`${quoteNumber}.pdf`} build={buildDevisBytes} />
+            </div>
+          )}
         </div>
 
         {/* ── Aperçu premium ─────────────────────── */}

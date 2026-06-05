@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatMoney, cn } from "@/lib/utils";
 import { LOTS_BTP, UNITS } from "@/lib/constants";
 import { getCompany } from "@/lib/client-data";
+import { SaveToClient } from "@/components/clients/save-to-client";
 import { useCurrency, convertAmount } from "@/lib/use-currency";
 import { Loader2, Calculator, FileDown, Sparkles, Trash2, Plus, ChevronDown } from "lucide-react";
 
@@ -148,19 +149,27 @@ export default function SousDetailPage() {
   const ready = ouvrages.filter((o) => o.components.length > 0);
   const canExport = ready.length > 0 && validated;
 
+  const dsPayload = () => ready.map((o) => ({ designation: o.designation || "Ouvrage", unit: o.unit, lot: o.lot, components: o.components }));
+
   async function exportDs(kind: "excel" | "pdf") {
     try {
       const fresh = await getCompany(true);
       setCompany(fresh);
-      const payload = ready.map((o) => ({ designation: o.designation || "Ouvrage", unit: o.unit, lot: o.lot, components: o.components }));
       const m = await import("@/lib/export-debourse-sec");
       const comp = { ...(fresh as object), currency } as never;
-      if (kind === "excel") await m.exportDebourseSecExcel(payload, comp);
-      else await m.exportDebourseSecPdf(payload, comp);
+      if (kind === "excel") await m.exportDebourseSecExcel(dsPayload(), comp);
+      else await m.exportDebourseSecPdf(dsPayload(), comp);
       toast.success("Export généré.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Export impossible");
     }
+  }
+
+  // PDF déboursé sec sans téléchargement (pour enregistrement dans une fiche client).
+  async function buildDsBytes() {
+    const fresh = await getCompany(true);
+    const m = await import("@/lib/export-debourse-sec");
+    return m.exportDebourseSecPdf(dsPayload(), { ...(fresh as object), currency } as never, { download: false });
   }
 
   return (
@@ -234,6 +243,11 @@ export default function SousDetailPage() {
                   <Button variant="gold" size="sm" disabled={!canExport} onClick={() => exportDs("pdf")}><FileDown className="size-4" /> PDF</Button>
                 </div>
               </div>
+              {canExport && (
+                <div className="flex justify-end">
+                  <SaveToClient category="Sous-détail" filename="debourse-sec-metrika.pdf" build={buildDsBytes} />
+                </div>
+              )}
 
               {ouvrages.map((o) => (
                 <Card key={o.id} className="overflow-hidden">

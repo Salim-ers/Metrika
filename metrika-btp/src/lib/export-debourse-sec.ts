@@ -30,7 +30,7 @@ export function debourseSecOf(o: DsOuvrage): number {
 }
 
 // ── PDF officiel : bordereau des sous-détails de déboursé sec ──────
-export async function exportDebourseSecPdf(ouvrages: DsOuvrage[], company?: CompanyExport | null) {
+export async function exportDebourseSecPdf(ouvrages: DsOuvrage[], company?: CompanyExport | null, opts?: { download?: boolean }): Promise<Uint8Array> {
   const k = await createPdf(company);
   const { C, W, M } = k;
   const unit = moneyUnit(company);
@@ -118,7 +118,7 @@ export async function exportDebourseSecPdf(ouvrages: DsOuvrage[], company?: Comp
 
   k.y -= 16;
   k.stamp({ label: "Cachet et signature" });
-  await k.finish("debourse-sec-metrika.pdf");
+  return k.finish("debourse-sec-metrika.pdf", opts);
 }
 
 // ── Excel ─────────────────────────────────────────────────────────

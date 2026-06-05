@@ -84,7 +84,8 @@ export async function exportCctpPdf(
   sections: CctpSection[],
   company?: CompanyExport | null,
   meta?: CctpMeta,
-) {
+  opts?: { download?: boolean },
+): Promise<Uint8Array> {
   const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
   const NAVY = rgb(0.078, 0.137, 0.247);
   const GOLD = rgb(0.882, 0.647, 0.196);
@@ -289,7 +290,11 @@ export async function exportCctpPdf(
     if (footLegal) p.drawText(footLegal, { x: M, y: M + 2, size: 6, font, color: GREY });
   });
 
-  download(new Blob([(await doc.save()) as BlobPart], { type: "application/pdf" }), "cctp-metrika.pdf");
+  const bytes = (await doc.save()) as Uint8Array;
+  if (opts?.download !== false) {
+    download(new Blob([bytes as BlobPart], { type: "application/pdf" }), "cctp-metrika.pdf");
+  }
+  return bytes;
 }
 
 // ── DOCX ──────────────────────────────────────────────────────────

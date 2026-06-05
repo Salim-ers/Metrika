@@ -22,7 +22,7 @@ function totals(d: DevisData) {
 }
 
 // ── PDF officiel (kit Metrika) ────────────────────────────────────
-export async function exportDevisPdf(d: DevisData): Promise<void> {
+export async function exportDevisPdf(d: DevisData, opts?: { download?: boolean }): Promise<Uint8Array> {
   const c = d.company;
   const k = await createPdf(c);
   const { C, W, M } = k;
@@ -139,7 +139,7 @@ export async function exportDevisPdf(d: DevisData): Promise<void> {
     for (const ln of k.wrap(bank, 8, false, W - 2 * M)) { k.text(ln, M, k.y, { size: 8, color: C.GREY }); k.y -= 11; }
   }
 
-  await k.finish(`${d.quoteNumber || "devis"}.pdf`);
+  return k.finish(`${d.quoteNumber || "devis"}.pdf`, opts);
 }
 
 // ── Excel (exceljs) ───────────────────────────────────────────────

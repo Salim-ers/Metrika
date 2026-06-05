@@ -25,9 +25,10 @@ async function getData() {
   try {
     const [clientCount, cctpCount, dpgfCount, quoteCount, recentClients, treatments] = await Promise.all([
       prisma.client.count(),
-      prisma.cctp.count(),
-      prisma.dpgf.count(),
-      prisma.quote.count(),
+      // Productions réellement enregistrées et rattachées à un client (suivi d'affaire).
+      prisma.clientDocument.count({ where: { category: "CCTP" } }),
+      prisma.clientDocument.count({ where: { category: "DPGF" } }),
+      prisma.clientDocument.count({ where: { category: "Devis" } }),
       prisma.client.findMany({
         take: 6, orderBy: { createdAt: "desc" },
         select: { id: true, name: true, type: true, status: true, city: true, createdAt: true },
@@ -67,9 +68,9 @@ async function DashboardData() {
     <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Clients & prospects" value={d.clientCount} sub="fichier relation client" icon={Users} accent />
-        <StatCard label="CCTP créés" value={d.cctpCount} sub="cahiers techniques" icon={FileText} />
-        <StatCard label="DPGF produits" value={d.dpgfCount} sub="décompositions de prix" icon={Table2} />
-        <StatCard label="Devis émis" value={d.quoteCount} sub="prêts à envoyer" icon={ReceiptText} />
+        <StatCard label="CCTP enregistrés" value={d.cctpCount} sub="rattachés à un client" icon={FileText} />
+        <StatCard label="DPGF enregistrés" value={d.dpgfCount} sub="rattachés à un client" icon={Table2} />
+        <StatCard label="Devis enregistrés" value={d.quoteCount} sub="rattachés à un client" icon={ReceiptText} />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">

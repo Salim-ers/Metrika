@@ -12,6 +12,7 @@ import { LOTS_BTP, PROJECT_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { PdfDropzone } from "@/components/ui/pdf-dropzone";
 import { getCompany } from "@/lib/client-data";
+import { SaveToClient } from "@/components/clients/save-to-client";
 import { Loader2, FileText, ShieldCheck, FileDown, Sparkles, X, ScanText, ChevronDown, ChevronsDownUp, ChevronsUpDown, Timer } from "lucide-react";
 
 interface Section { lot: string; content: string; validated?: boolean }
@@ -163,6 +164,15 @@ export default function CctpPage() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Export impossible");
     }
+  }
+
+  // PDF CCTP sans téléchargement (pour enregistrement dans une fiche client).
+  async function buildCctpBytes() {
+    const fresh = await getCompany(true);
+    const m = await import("@/lib/export-cctp");
+    const data = sections.map((s) => ({ lot: s.lot, content: s.content }));
+    const meta = { projectName, projectType, owner, architect, bet };
+    return m.exportCctpPdf(data, fresh as never, meta, { download: false });
   }
 
   return (
@@ -363,7 +373,10 @@ export default function CctpPage() {
                       ? "Toutes les sections sont validées. Vous pouvez exporter le document officiel."
                       : "Validez toutes les sections pour débloquer l’export final."}
                   </p>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {allValidated && (
+                      <SaveToClient category="CCTP" filename="cctp-metrika.pdf" build={buildCctpBytes} />
+                    )}
                     <Button variant="outline" disabled={!allValidated} onClick={() => exportCctp("docx")}>
                       <FileDown className="size-4" /> DOCX
                     </Button>

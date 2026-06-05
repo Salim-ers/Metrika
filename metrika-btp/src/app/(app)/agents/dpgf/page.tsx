@@ -13,6 +13,7 @@ import { UNITS, LOTS_BTP } from "@/lib/constants";
 import { useCurrency, convertAmount } from "@/lib/use-currency";
 import { PdfDropzone } from "@/components/ui/pdf-dropzone";
 import { getCompany } from "@/lib/client-data";
+import { SaveToClient } from "@/components/clients/save-to-client";
 import { Loader2, Table2, CheckCircle2, FileDown, Sparkles, FileText, X, Plus, Trash2 } from "lucide-react";
 
 interface Line {
@@ -124,6 +125,13 @@ export default function DpgfPage() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Export impossible");
     }
+  }
+
+  // PDF DPGF sans téléchargement (pour enregistrement dans une fiche client).
+  async function buildDpgfBytes() {
+    const fresh = await getCompany(true);
+    const m = await import("@/lib/export-dpgf");
+    return m.exportDpgfPdf(lines, { ...(fresh as object), currency } as never, 20, { download: false });
   }
 
   const total = lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
@@ -289,6 +297,11 @@ export default function DpgfPage() {
                     <Button variant="gold" disabled={!allValidated} onClick={() => exportDpgf("pdf")}><FileDown className="size-4" /> PDF</Button>
                   </div>
                 </div>
+                {allValidated && (
+                  <div className="mt-3 flex justify-end">
+                    <SaveToClient category="DPGF" filename="dpgf-metrika.pdf" build={buildDpgfBytes} />
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
