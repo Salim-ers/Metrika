@@ -18,8 +18,8 @@ export function Sidebar() {
 
   return (
     <aside className="bg-metrika-deep hidden w-[264px] shrink-0 flex-col text-sidebar-foreground lg:flex">
-      <div className="flex h-[72px] items-center border-b border-sidebar-border px-6">
-        <MetrikaLogo variant="light" />
+      <div className="flex h-[84px] items-center justify-center border-b border-sidebar-border px-4">
+        <MetrikaLogo variant="light" size="lg" />
       </div>
 
       <nav className="flex-1 space-y-6 overflow-y-auto px-4 py-6">
