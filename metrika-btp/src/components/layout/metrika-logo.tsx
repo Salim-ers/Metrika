@@ -10,9 +10,9 @@ import { cn } from "@/lib/utils";
  * - variant "dark" (fonds clairs : aperçus/exports) : logo SVG reconstitué.
  */
 const SIZES = {
-  sm: { gap: "gap-3", svg: "h-9", img: "h-10", name: "text-xl", sub: "text-[10px]", subGap: "mt-0.5" },
-  lg: { gap: "gap-4", svg: "h-16", img: "h-16", name: "text-3xl", sub: "text-xs", subGap: "mt-1" },
-  xl: { gap: "gap-5", svg: "h-28", img: "h-28", name: "text-5xl", sub: "text-sm", subGap: "mt-1.5" },
+  sm: { gap: "gap-3", svg: "h-9", img: "h-14", name: "text-xl", sub: "text-[10px]", subGap: "mt-0.5" },
+  lg: { gap: "gap-4", svg: "h-16", img: "h-20", name: "text-3xl", sub: "text-xs", subGap: "mt-1" },
+  xl: { gap: "gap-5", svg: "h-28", img: "h-32", name: "text-5xl", sub: "text-sm", subGap: "mt-1.5" },
 } as const;
 
 export function MetrikaLogo({
@@ -33,10 +33,12 @@ export function MetrikaLogo({
   if (variant === "light" && !imgFailed) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
+      // mix-blend-lighten : le fond sombre du PNG se fond dans le dégradé marine,
+      // seul le logo (clair/doré) reste visible — plus de rectangle apparent.
       <img
         src="/brand/metrika-logo.png"
         alt="Metrika Métrage BTP"
-        className={cn(s.img, "w-auto shrink-0 object-contain", className)}
+        className={cn(s.img, "w-auto shrink-0 object-contain mix-blend-lighten", className)}
         onError={() => setImgFailed(true)}
       />
     );
