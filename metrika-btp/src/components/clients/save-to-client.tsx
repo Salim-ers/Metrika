@@ -27,14 +27,17 @@ export function SaveToClient({
   filename,
   build,
   disabled,
+  defaultClientId,
 }: {
   category: string;
   filename: string;
   build: () => Promise<Uint8Array>;
   disabled?: boolean;
+  /** Pré-sélectionne ce client (ex: client déjà choisi sur le devis). */
+  defaultClientId?: string;
 }) {
   const [clients, setClients] = useState<ClientOpt[]>([]);
-  const [clientId, setClientId] = useState("");
+  const [clientId, setClientId] = useState(defaultClientId ?? "");
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
@@ -45,6 +48,9 @@ export function SaveToClient({
       .catch(() => {})
       .finally(() => setLoaded(true));
   }, []);
+
+  // Suit la pré-sélection fournie par la page (client choisi sur le devis).
+  useEffect(() => { if (defaultClientId) setClientId(defaultClientId); }, [defaultClientId]);
 
   async function save() {
     if (!clientId) { toast.error("Choisissez un client."); return; }

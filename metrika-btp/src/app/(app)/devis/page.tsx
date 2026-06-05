@@ -29,6 +29,10 @@ interface PriceItem {
   unitPrice: number; sellingPrice: number; lot?: string | null; category?: string | null;
 }
 
+interface ClientLite {
+  id: string; name: string; address?: string | null; city?: string | null;
+}
+
 const VAT_RATE = 20;
 
 export default function DevisPage() {
@@ -42,11 +46,25 @@ export default function DevisPage() {
   const [validated, setValidated] = useState(false);
   const [prices, setPrices] = useState<PriceItem[]>([]);
   const [company, setCompany] = useState<Record<string, unknown> | null>(null);
+  const [clients, setClients] = useState<ClientLite[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState("");
 
   useEffect(() => {
     getPrices().then((items) => setPrices(items as never));
     getCompany().then(setCompany);
+    fetch("/api/clients").then((r) => r.json()).then((d) => setClients(d.clients ?? [])).catch(() => {});
   }, []);
+
+  // Sélection d'un client enregistré → remplissage automatique des coordonnées.
+  function pickClient(id: string) {
+    setSelectedClientId(id);
+    setValidated(false);
+    const c = clients.find((x) => x.id === id);
+    if (c) {
+      setClientName(c.name);
+      setClientAddress([c.address, c.city].filter(Boolean).join(", "));
+    }
+  }
 
   const { currency, rate } = useCurrency();
   const vatRate = Number(company?.vatRate) || VAT_RATE;
@@ -225,7 +243,17 @@ export default function DevisPage() {
             <CardContent className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
                 <Label>Client</Label>
-                <Input value={clientName} onChange={(e) => { setClientName(e.target.value); setValidated(false); }} placeholder="Raison sociale du client" />
+                {clients.length > 0 && (
+                  <select
+                    value={selectedClientId}
+                    onChange={(e) => pickClient(e.target.value)}
+                    className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="">— Choisir un client enregistré, ou saisir ci-dessous —</option>
+                    {clients.map((c) => <option key={c.id} value={c.id}>{c.name}{c.city ? ` · ${c.city}` : ""}</option>)}
+                  </select>
+                )}
+                <Input value={clientName} onChange={(e) => { setClientName(e.target.value); setSelectedClientId(""); setValidated(false); }} placeholder="Raison sociale du client" />
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label>Adresse client</Label>
@@ -402,7 +430,7 @@ export default function DevisPage() {
           </div>
           {validated && (
             <div className="flex justify-end">
-              <SaveToClient category="Devis" filename={`${quoteNumber}.pdf`} build={buildDevisBytes} />
+              <SaveToClient category="Devis" filename={`${quoteNumber}.pdf`} build={buildDevisBytes} defaultClientId={selectedClientId} />
             </div>
           )}
         </div>
