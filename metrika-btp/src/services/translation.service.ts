@@ -6,22 +6,6 @@ export type Direction = "auto" | "fr-en" | "en-fr" | "fr-ar" | "ar-fr";
 
 const LANG_LABEL: Record<Lang, string> = { fr: "français", en: "anglais", ar: "arabe" };
 
-/** Découpe un texte en morceaux ~max caractères en respectant les sauts de ligne. */
-function chunkText(text: string, max = 6000): string[] {
-  if (text.length <= max) return [text];
-  const out: string[] = [];
-  let buf = "";
-  for (const para of text.split(/\n/)) {
-    if (buf.length + para.length + 1 > max && buf) {
-      out.push(buf);
-      buf = "";
-    }
-    buf += (buf ? "\n" : "") + para;
-  }
-  if (buf) out.push(buf);
-  return out;
-}
-
 /** Détecte la langue dominante d'un échantillon (ar/fr/en, fallback fr). */
 export async function detectLanguage(sample: string): Promise<Lang> {
   const text = sample.slice(0, 1500).trim();
@@ -46,67 +30,42 @@ export async function detectLanguage(sample: string): Promise<Lang> {
 }
 
 /**
- * Traduit un texte en préservant la structure (sauts de ligne, listes, titres,
- * nombres, unités, références techniques BTP). Aucune reformulation, aucun ajout.
+ * Traduit un TABLEAU de lignes en conservant l'ordre et le nombre (pour replacer
+ * chaque ligne traduite à sa position d'origine). Traité par petits lots pour
+ * fiabiliser la sortie structurée. Les lignes vides restent vides.
  */
-async function translateOnce(text: string, target: Lang): Promise<string> {
-  if (!text.trim()) return text;
-  return runClaude<string>({
-    system: [
-      `Tu es un traducteur technique professionnel spécialisé BTP / construction.`,
-      `Traduis FIDÈLEMENT le texte fourni vers le ${LANG_LABEL[target]}.`,
-      `Règles strictes :`,
-      `- Conserve EXACTEMENT la mise en forme : sauts de ligne, retours à la ligne, indentation, listes, titres.`,
-      `- Ne traduis pas les nombres, codes, références, unités (m², ml, m³, mm), noms propres, marques.`,
-      `- Ne reformule pas, n'ajoute rien, ne commente pas. Renvoie UNIQUEMENT la traduction.`,
-      `- Respecte la terminologie technique du bâtiment (CCTP, DPGF, gros œuvre, etc.).`,
-    ].join("\n"),
-    user: text,
-    maxTokens: 8000,
-  });
-}
+export async function translateLines(lines: string[], target: Lang): Promise<string[]> {
+  const out: string[] = lines.slice();
+  const idx: number[] = [];
+  const todo: string[] = [];
+  lines.forEach((l, i) => { if (l && l.trim()) { idx.push(i); todo.push(l); } });
 
-/** Traduit une page entière en la découpant si nécessaire. */
-async function translatePage(page: string, target: Lang): Promise<string> {
-  const chunks = chunkText(page);
-  if (chunks.length === 1) return translateOnce(chunks[0], target);
-  const parts: string[] = [];
-  for (const c of chunks) parts.push(await translateOnce(c, target));
-  return parts.join("\n");
-}
-
-export interface TranslateResult {
-  sourceLang: Lang;
-  targetLang: Lang;
-  pages: string[];
-}
-
-/**
- * Traduit un document (pages de texte) FR↔EN. La direction "auto" détecte la
- * langue source et bascule vers l'autre. Les pages sont traduites en séquence
- * pour rester sous les limites de tokens (chunking interne sur les grosses pages).
- */
-export async function translateDocument(
-  pages: string[],
-  direction: Direction,
-): Promise<TranslateResult> {
-  const sample = pages.find((p) => p.trim()) ?? "";
-  let sourceLang: Lang;
-  let targetLang: Lang;
-
-  if (direction === "fr-en") { sourceLang = "fr"; targetLang = "en"; }
-  else if (direction === "en-fr") { sourceLang = "en"; targetLang = "fr"; }
-  else if (direction === "fr-ar") { sourceLang = "fr"; targetLang = "ar"; }
-  else if (direction === "ar-fr") { sourceLang = "ar"; targetLang = "fr"; }
-  else {
-    sourceLang = await detectLanguage(sample);
-    // En auto : l'arabe bascule vers le français, sinon FR↔EN.
-    targetLang = sourceLang === "ar" ? "fr" : sourceLang === "fr" ? "en" : "fr";
+  const BATCH = 40;
+  for (let b = 0; b < todo.length; b += BATCH) {
+    const batch = todo.slice(b, b + BATCH);
+    try {
+      const res = await runClaude<{ translations: string[] }>({
+        system: [
+          `Tu es un traducteur technique BTP. Traduis chaque élément vers le ${LANG_LABEL[target]}.`,
+          `On te fournit un tableau JSON de lignes. Renvoie EXACTEMENT le même nombre de traductions, dans le MÊME ordre (1 traduction par ligne).`,
+          `Ne traduis pas les nombres, codes, unités (m², ml, m³, mm), références ni noms propres.`,
+          `Ne fusionne pas, ne découpe pas, n'ajoute pas d'élément. Traduction seule.`,
+        ].join("\n"),
+        user: JSON.stringify(batch),
+        maxTokens: 8000,
+        schema: {
+          type: "object",
+          properties: { translations: { type: "array", items: { type: "string" } } },
+          required: ["translations"],
+        },
+      });
+      const tr = Array.isArray(res.translations) ? res.translations : [];
+      batch.forEach((orig, j) => { out[idx[b + j]] = tr[j] ?? orig; });
+    } catch {
+      // En cas d'échec d'un lot, on conserve l'original (document toujours exploitable).
+      batch.forEach((orig, j) => { out[idx[b + j]] = orig; });
+    }
   }
-
-  const translated: string[] = [];
-  for (const page of pages) {
-    translated.push(await translatePage(page, targetLang));
-  }
-  return { sourceLang, targetLang, pages: translated };
+  return out;
 }
+

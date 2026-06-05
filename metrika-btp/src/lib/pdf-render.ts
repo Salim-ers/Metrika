@@ -137,6 +137,56 @@ export async function extractPdfText(file: File): Promise<string> {
   return text.trim();
 }
 
+export interface LayoutLine { x: number; y: number; fontSize: number; width: number; text: string }
+export interface LayoutPage { width: number; height: number; lines: LayoutLine[] }
+
+/**
+ * Extrait le texte AVEC ses positions (coordonnées PDF, origine bas-gauche),
+ * regroupé en lignes. Permet de reconstruire une traduction « copier-coller »
+ * fidèle : on redessine le texte traduit aux mêmes positions.
+ */
+export async function extractPdfLayout(file: File, maxPages = 30): Promise<LayoutPage[]> {
+  const data = new Uint8Array(await file.arrayBuffer());
+  const pdf = await pdfjsLib.getDocument({ data }).promise;
+  const pages: LayoutPage[] = [];
+  const n = Math.min(pdf.numPages, maxPages);
+  for (let i = 1; i <= n; i++) {
+    const page = await pdf.getPage(i);
+    const vp = page.getViewport({ scale: 1 });
+    const content = await page.getTextContent();
+    const raw = content.items as Array<{ str?: string; transform?: number[]; width?: number }>;
+    const items = raw
+      .filter((it) => typeof it.str === "string" && it.str !== "" && Array.isArray(it.transform))
+      .map((it) => {
+        const t = it.transform as number[];
+        return { x: t[4], y: t[5], fs: Math.hypot(t[2], t[3]) || Math.abs(t[3]) || 10, w: it.width || 0, str: it.str as string };
+      });
+    // Tri : du haut vers le bas (y décroissant), puis de gauche à droite.
+    items.sort((a, b) => (Math.abs(a.y - b.y) > 2 ? b.y - a.y : a.x - b.x));
+
+    const lines: LayoutLine[] = [];
+    let cur: (LayoutLine & { _end: number }) | null = null;
+    for (const it of items) {
+      if (cur && Math.abs(it.y - cur.y) <= Math.max(2, cur.fontSize * 0.5)) {
+        const gap = it.x - cur._end;
+        if (gap > cur.fontSize * 0.25) cur.text += " ";
+        cur.text += it.str;
+        cur._end = it.x + it.w;
+        cur.width = cur._end - cur.x;
+        cur.fontSize = Math.max(cur.fontSize, it.fs);
+      } else {
+        if (cur) lines.push({ x: cur.x, y: cur.y, fontSize: cur.fontSize, width: cur.width, text: cur.text.replace(/\s+/g, " ").trim() });
+        cur = { x: it.x, y: it.y, fontSize: it.fs, width: it.w, text: it.str, _end: it.x + it.w };
+      }
+    }
+    if (cur) lines.push({ x: cur.x, y: cur.y, fontSize: cur.fontSize, width: cur.width, text: cur.text.replace(/\s+/g, " ").trim() });
+
+    pages.push({ width: vp.width, height: vp.height, lines: lines.filter((l) => l.text) });
+  }
+  await pdf.destroy();
+  return pages;
+}
+
 /**
  * Extrait le texte page par page en reconstituant les sauts de ligne à partir
  * de la position verticale des fragments (préserve au mieux la mise en page
