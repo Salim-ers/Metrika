@@ -25,7 +25,9 @@ export async function buildTranslatedPdf(
     const fontkit = (await import("@pdf-lib/fontkit")).default;
     doc.registerFontkit(fontkit);
     const buf = await fetch("/fonts/Amiri-Regular.ttf").then((r) => r.arrayBuffer());
-    font = await doc.embedFont(buf, { subset: true });
+    // subset:false → police complète embarquée. Le sous-ensemblage produisait des
+    // glyphes vides (texte sélectionnable mais invisible) pour l'arabe.
+    font = await doc.embedFont(buf, { subset: false });
   } else {
     font = await doc.embedFont(StandardFonts.Helvetica);
   }
