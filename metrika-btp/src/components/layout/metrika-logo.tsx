@@ -1,14 +1,18 @@
+"use client";
+
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Logo Metrika reconstitué en SVG (gratte-ciels + règle graduée),
- * aux couleurs de marque. `variant` adapte la couleur du texte
- * pour fond clair ou fond marine (sidebar).
+ * Logo Metrika.
+ * - variant "light" (fonds marine : connexion, menu) : utilise l'image de marque
+ *   public/brand/metrika-logo.png si présente ; sinon repli sur le logo SVG.
+ * - variant "dark" (fonds clairs : aperçus/exports) : logo SVG reconstitué.
  */
 const SIZES = {
-  sm: { gap: "gap-3", svg: "h-9", name: "text-xl", sub: "text-[10px]", subGap: "mt-0.5" },
-  lg: { gap: "gap-4", svg: "h-16", name: "text-3xl", sub: "text-xs", subGap: "mt-1" },
-  xl: { gap: "gap-5", svg: "h-28", name: "text-5xl", sub: "text-sm", subGap: "mt-1.5" },
+  sm: { gap: "gap-3", svg: "h-9", img: "h-10", name: "text-xl", sub: "text-[10px]", subGap: "mt-0.5" },
+  lg: { gap: "gap-4", svg: "h-16", img: "h-16", name: "text-3xl", sub: "text-xs", subGap: "mt-1" },
+  xl: { gap: "gap-5", svg: "h-28", img: "h-28", name: "text-5xl", sub: "text-sm", subGap: "mt-1.5" },
 } as const;
 
 export function MetrikaLogo({
@@ -22,10 +26,25 @@ export function MetrikaLogo({
   showText?: boolean;
   size?: keyof typeof SIZES;
 }) {
+  const s = SIZES[size];
+  const [imgFailed, setImgFailed] = useState(false);
+
+  // Sur fond marine, on privilégie l'image de marque (lockup complet).
+  if (variant === "light" && !imgFailed) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src="/brand/metrika-logo.png"
+        alt="Metrika Métrage BTP"
+        className={cn(s.img, "w-auto shrink-0 object-contain", className)}
+        onError={() => setImgFailed(true)}
+      />
+    );
+  }
+
   const navy = variant === "light" ? "#FFFFFF" : "#14233F";
   const navySub = variant === "light" ? "#FFFFFF" : "#0A1A35";
   const gold = "#E1A532";
-  const s = SIZES[size];
 
   return (
     <div className={cn("flex items-center", s.gap, className)}>

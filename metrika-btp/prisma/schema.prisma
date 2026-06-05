@@ -106,19 +106,44 @@ model Company {
   updatedAt     DateTime @updatedAt
 }
 
-// ── Clients & projets ────────────────────────────────────────────
+// ── Clients & prospects (CRM) ─────────────────────────────────────
+// type   : "ARCHITECTE" | "BET" | "ECONOMISTE" | "PROMOTEUR" | "ENTREPRISE" | "MOA" | "PARTICULIER" | "AUTRE"
+// status : "PROSPECT" | "EN_COURS" | "CLIENT" | "PERDU"
 model Client {
   id        String   @id @default(cuid())
   name      String
+  type      String?
+  status    String   @default("PROSPECT")
+  company   String?
   ice       String?
   contact   String?
   address   String?
   city      String?
+  region    String?
   phone     String?
   email     String?
+  website   String?
+  notes     String?
   createdAt DateTime @default(now())
   projects  Project[]
   quotes    Quote[]
+  documents ClientDocument[]
+}
+
+// Documents/plans rattachés à un client (stockés en data URL — sans infra externe).
+// category : "Plan" | "Document" | "Photo" | "Devis" | "Autre"
+model ClientDocument {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name      String
+  category  String?
+  mimeType  String?
+  size      Int?
+  dataUrl   String
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
 }
 
 model Project {

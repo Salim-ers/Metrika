@@ -89,15 +89,35 @@ CREATE TABLE "Company" (
 CREATE TABLE "Client" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
+    "type" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'PROSPECT',
+    "company" TEXT,
     "ice" TEXT,
     "contact" TEXT,
     "address" TEXT,
     "city" TEXT,
+    "region" TEXT,
     "phone" TEXT,
     "email" TEXT,
+    "website" TEXT,
+    "notes" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Client_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ClientDocument" (
+    "id" TEXT NOT NULL,
+    "clientId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "category" TEXT,
+    "mimeType" TEXT,
+    "size" INTEGER,
+    "dataUrl" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ClientDocument_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -311,6 +331,9 @@ CREATE UNIQUE INDEX "Session_sessionToken_key" ON "Session"("sessionToken");
 CREATE UNIQUE INDEX "SousDetail_dpgfLineId_key" ON "SousDetail"("dpgfLineId");
 
 -- CreateIndex
+CREATE INDEX "ClientDocument_clientId_idx" ON "ClientDocument"("clientId");
+
+-- CreateIndex
 CREATE INDEX "PriceItem_designation_idx" ON "PriceItem"("designation");
 
 -- CreateIndex
@@ -327,6 +350,9 @@ ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId"
 
 -- AddForeignKey
 ALTER TABLE "Project" ADD CONSTRAINT "Project_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ClientDocument" ADD CONSTRAINT "ClientDocument_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Document" ADD CONSTRAINT "Document_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE SET NULL ON UPDATE CASCADE;

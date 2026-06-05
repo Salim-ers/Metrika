@@ -140,6 +140,49 @@ async function ensureColumns() {
   for (const s of conversions) await run(s);
 }
 
+/**
+ * Migration idempotente du module Clients/CRM (PostgreSQL). Ajoute les colonnes
+ * récentes au modèle Client et crée la table ClientDocument sur les bases déjà
+ * existantes. Une seule vérification (Client.type) pour sortir vite en régime établi.
+ */
+async function ensureClientCrm() {
+  if (!/^postgres/i.test(process.env.DATABASE_URL ?? "")) return;
+  const run = async (sql: string) => {
+    try { await prisma.$executeRawUnsafe(sql); }
+    catch (e) { console.warn("[db-init] migration CRM ignorée:", (e as Error).message?.slice(0, 120)); }
+  };
+  let hasType = false;
+  try {
+    const rows = await prisma.$queryRawUnsafe<{ column_name: string }[]>(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = 'Client' AND column_name = 'type'`,
+    );
+    hasType = rows.length > 0;
+  } catch { /* en cas de doute, on tente la migration */ }
+  if (hasType) return;
+
+  for (const sql of [
+    `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "type" TEXT`,
+    `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "status" TEXT NOT NULL DEFAULT 'PROSPECT'`,
+    `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "company" TEXT`,
+    `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "region" TEXT`,
+    `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "website" TEXT`,
+    `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "notes" TEXT`,
+    `CREATE TABLE IF NOT EXISTS "ClientDocument" (
+        "id" TEXT NOT NULL,
+        "clientId" TEXT NOT NULL,
+        "name" TEXT NOT NULL,
+        "category" TEXT,
+        "mimeType" TEXT,
+        "size" INTEGER,
+        "dataUrl" TEXT NOT NULL,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "ClientDocument_pkey" PRIMARY KEY ("id")
+     )`,
+    `CREATE INDEX IF NOT EXISTS "ClientDocument_clientId_idx" ON "ClientDocument"("clientId")`,
+    `ALTER TABLE "ClientDocument" ADD CONSTRAINT "ClientDocument_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE`,
+  ]) await run(sql);
+}
+
 async function doInit() {
   let tablesExist = true;
   try {
@@ -153,6 +196,7 @@ async function doInit() {
     await createSchema();
   }
   await ensureColumns();
+  await ensureClientCrm();
 
   // Seed à chaque démarrage d'instance (mis en cache par `ready`, donc au plus
   // une fois par instance) : l'admin est resynchronisé avec ADMIN_EMAIL /

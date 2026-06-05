@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, FileStack, FileText, Table2, Calculator,
-  Library, ReceiptText, Settings, LayoutGrid, Languages,
+  Library, ReceiptText, Settings, LayoutGrid, Languages, Users,
 } from "lucide-react";
 
 /** Lots BTP disponibles pour la génération de CCTP (multi-sélection). */
@@ -30,11 +30,34 @@ export const PROJECT_TYPES = [
 
 export const UNITS = ["m²", "ml", "m³", "U", "ens", "kg", "forfait"] as const;
 
+/** Métiers / types de clients & prospects (archi, BET, économiste…). */
+export const CLIENT_TYPES = [
+  { value: "ARCHITECTE", label: "Architecte" },
+  { value: "BET", label: "Bureau d’études" },
+  { value: "ECONOMISTE", label: "Économiste" },
+  { value: "PROMOTEUR", label: "Promoteur" },
+  { value: "ENTREPRISE", label: "Entreprise BTP" },
+  { value: "MOA", label: "Maître d’ouvrage" },
+  { value: "PARTICULIER", label: "Particulier" },
+  { value: "AUTRE", label: "Autre" },
+] as const;
+
+/** Statut commercial du client. */
+export const CLIENT_STATUSES = [
+  { value: "PROSPECT", label: "Prospect" },
+  { value: "EN_COURS", label: "En cours" },
+  { value: "CLIENT", label: "Client" },
+  { value: "PERDU", label: "Perdu" },
+] as const;
+
 /** Navigation principale (sidebar). */
 export const NAV = [
   {
     group: "Pilotage",
-    items: [{ label: "Tableau de bord", href: "/dashboard", icon: LayoutDashboard }],
+    items: [
+      { label: "Tableau de bord", href: "/dashboard", icon: LayoutDashboard },
+      { label: "Clients & prospects", href: "/clients", icon: Users },
+    ],
   },
   {
     group: "Outils documentaires",

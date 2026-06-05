@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { FileStack, FileText, Table2, ReceiptText, Activity, CheckCircle2, Clock, ArrowRight } from "lucide-react";
+import { Users, FileText, Table2, ReceiptText, Activity, CheckCircle2, Clock, ArrowRight } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { ActivityChart } from "@/components/dashboard/activity-chart";
@@ -11,37 +11,40 @@ import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-const STATUS_MAP: Record<string, { label: string; variant: "success" | "warning" | "muted" | "gold" }> = {
-  GENERATED: { label: "Généré", variant: "success" },
-  VALIDATED: { label: "Validé", variant: "success" },
-  PENDING_REVIEW: { label: "À valider", variant: "warning" },
-  DRAFT: { label: "Brouillon", variant: "muted" },
-  ARCHIVED: { label: "Archivé", variant: "muted" },
-};
-
 const ACTIONS = [
-  { href: "/devis", label: "Nouveau devis", primary: true },
-  { href: "/agents/cctp", label: "Générer un CCTP" },
+  { href: "/clients", label: "Nouveau client", primary: true },
+  { href: "/devis", label: "Devis" },
+  { href: "/agents/cctp", label: "CCTP" },
   { href: "/agents/dpgf", label: "DPGF" },
   { href: "/agents/sous-detail", label: "Sous-détail" },
+  { href: "/agents/traduction", label: "Traduction PDF" },
   { href: "/agents/pdf", label: "PDF & Images" },
 ];
 
 async function getData() {
   try {
-    const [docCount, cctpCount, dpgfCount, quoteCount, recentDocs, treatments] = await Promise.all([
-      prisma.document.count(),
+    const [clientCount, cctpCount, dpgfCount, quoteCount, recentClients, treatments] = await Promise.all([
+      prisma.client.count(),
       prisma.cctp.count(),
       prisma.dpgf.count(),
       prisma.quote.count(),
-      prisma.document.findMany({ take: 6, orderBy: { createdAt: "desc" } }),
+      prisma.client.findMany({
+        take: 6, orderBy: { createdAt: "desc" },
+        select: { id: true, name: true, type: true, status: true, city: true, createdAt: true },
+      }),
       prisma.treatment.findMany({ take: 5, orderBy: { createdAt: "desc" } }),
     ]);
-    return { docCount, cctpCount, dpgfCount, quoteCount, recentDocs, treatments, ok: true };
+    return { clientCount, cctpCount, dpgfCount, quoteCount, recentClients, treatments, ok: true };
   } catch {
-    return { docCount: 0, cctpCount: 0, dpgfCount: 0, quoteCount: 0, recentDocs: [], treatments: [], ok: false };
+    return { clientCount: 0, cctpCount: 0, dpgfCount: 0, quoteCount: 0, recentClients: [], treatments: [], ok: false };
   }
 }
+
+const CLIENT_TYPE_LABELS: Record<string, string> = {
+  ARCHITECTE: "Architecte", BET: "Bureau d’études", ECONOMISTE: "Économiste",
+  PROMOTEUR: "Promoteur", ENTREPRISE: "Entreprise", MOA: "Maître d’ouvrage",
+  PARTICULIER: "Particulier", AUTRE: "Autre",
+};
 
 function StatsSkeleton() {
   return (
@@ -57,16 +60,16 @@ async function DashboardData() {
   const d = await getData();
   const chart = [
     { mois: "Jan", documents: 0 }, { mois: "Fév", documents: 0 }, { mois: "Mar", documents: 0 },
-    { mois: "Avr", documents: 2 }, { mois: "Mai", documents: 5 }, { mois: "Juin", documents: d.docCount },
+    { mois: "Avr", documents: 2 }, { mois: "Mai", documents: 5 }, { mois: "Juin", documents: d.quoteCount },
   ];
 
   return (
     <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Documents générés" value={d.docCount} sub="tous types confondus" icon={FileStack} />
+        <StatCard label="Clients & prospects" value={d.clientCount} sub="fichier relation client" icon={Users} accent />
         <StatCard label="CCTP créés" value={d.cctpCount} sub="cahiers techniques" icon={FileText} />
         <StatCard label="DPGF produits" value={d.dpgfCount} sub="décompositions de prix" icon={Table2} />
-        <StatCard label="Devis émis" value={d.quoteCount} sub="prêts à envoyer" icon={ReceiptText} accent />
+        <StatCard label="Devis émis" value={d.quoteCount} sub="prêts à envoyer" icon={ReceiptText} />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
@@ -115,35 +118,36 @@ async function DashboardData() {
 
       <Card className="mt-6">
         <CardHeader className="flex-row items-center justify-between">
-          <CardTitle className="text-navy-900">Derniers documents</CardTitle>
+          <CardTitle className="text-navy-900">Derniers clients & prospects</CardTitle>
           <Button variant="outline" size="sm" asChild>
-            <Link href="/agents">Tous les outils</Link>
+            <Link href="/clients">Tous les clients</Link>
           </Button>
         </CardHeader>
         <CardContent>
-          {d.recentDocs.length === 0 ? (
+          {d.recentClients.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              Aucun document pour l’instant. Commencez par créer un devis ou un CCTP.
+              Aucun client pour l’instant. <Link href="/clients" className="text-gold-600 underline">Ajoutez votre premier client</Link>.
             </p>
           ) : (
             <div className="divide-y divide-border">
-              {d.recentDocs.map((doc) => {
-                const s = STATUS_MAP[doc.status] ?? STATUS_MAP.DRAFT;
-                return (
-                  <div key={doc.id} className="flex items-center justify-between py-3">
-                    <div className="flex items-center gap-3">
-                      <span className="flex size-9 items-center justify-center rounded-lg bg-navy-50 text-navy-600">
-                        <FileText className="size-4" />
-                      </span>
-                      <div>
-                        <p className="text-sm font-medium text-navy-800">{doc.name}</p>
-                        <p className="text-xs text-muted-foreground">{formatDate(doc.createdAt)} · {doc.kind}</p>
-                      </div>
+              {d.recentClients.map((c) => (
+                <Link key={c.id} href={`/clients/${c.id}`} className="flex items-center justify-between py-3 transition-colors hover:bg-muted/30">
+                  <div className="flex items-center gap-3">
+                    <span className="flex size-9 items-center justify-center rounded-lg bg-navy-50 font-semibold text-navy-600">
+                      {c.name.slice(0, 1).toUpperCase()}
+                    </span>
+                    <div>
+                      <p className="text-sm font-medium text-navy-800">{c.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {CLIENT_TYPE_LABELS[c.type ?? ""] ?? "Contact"}{c.city ? ` · ${c.city}` : ""} · {formatDate(c.createdAt)}
+                      </p>
                     </div>
-                    <Badge variant={s.variant}>{s.label}</Badge>
                   </div>
-                );
-              })}
+                  <Badge variant={c.status === "CLIENT" ? "success" : c.status === "PERDU" ? "muted" : "gold"}>
+                    {c.status === "CLIENT" ? "Client" : c.status === "EN_COURS" ? "En cours" : c.status === "PERDU" ? "Perdu" : "Prospect"}
+                  </Badge>
+                </Link>
+              ))}
             </div>
           )}
         </CardContent>
