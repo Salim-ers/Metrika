@@ -4,16 +4,16 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Logo Metrika.
- * - variant "light" (fonds marine : connexion, menu) : l'image de marque
- *   public/brand/metrika-logo.png est posée sur une plaque blanche arrondie
- *   (rendu net, quel que soit le fond du PNG). Repli SVG si l'image manque.
- * - variant "dark" (fonds clairs : aperçus) : image telle quelle (ou SVG en repli).
+ * Logo Metrika (image de marque détourée, fond transparent).
+ * - variant "light" (fonds marine : connexion, menu) : version claire
+ *   (texte blanc + doré) -> s'intègre directement au décor, sans cadre.
+ * - variant "dark" (fonds clairs : aperçus) : version d'origine (navy + doré).
+ * Repli SVG si l'image est absente.
  */
 const SIZES = {
-  sm: { gap: "gap-3", svg: "h-9", img: "h-8", plate: "px-3 py-2", name: "text-xl", sub: "text-[10px]", subGap: "mt-0.5" },
-  lg: { gap: "gap-4", svg: "h-16", img: "h-12", plate: "px-4 py-2.5", name: "text-3xl", sub: "text-xs", subGap: "mt-1" },
-  xl: { gap: "gap-5", svg: "h-28", img: "h-16", plate: "px-6 py-4", name: "text-5xl", sub: "text-sm", subGap: "mt-1.5" },
+  sm: { gap: "gap-3", svg: "h-9", img: "h-10", name: "text-xl", sub: "text-[10px]", subGap: "mt-0.5" },
+  lg: { gap: "gap-4", svg: "h-16", img: "h-14", name: "text-3xl", sub: "text-xs", subGap: "mt-1" },
+  xl: { gap: "gap-5", svg: "h-28", img: "h-20", name: "text-5xl", sub: "text-sm", subGap: "mt-1.5" },
 } as const;
 
 export function MetrikaLogo({
@@ -31,24 +31,16 @@ export function MetrikaLogo({
   const [imgFailed, setImgFailed] = useState(false);
 
   if (!imgFailed) {
-    const imgEl = (
+    const src = variant === "light" ? "/brand/metrika-logo-light.png" : "/brand/metrika-logo.png";
+    return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src="/brand/metrika-logo.png"
+        src={src}
         alt="Metrika Métrage BTP"
-        className={cn(s.img, "w-auto object-contain", variant === "dark" && className)}
+        className={cn(s.img, "w-auto shrink-0 object-contain", className)}
         onError={() => setImgFailed(true)}
       />
     );
-    if (variant === "light") {
-      // Plaque blanche : le logo (navy + doré) reste lisible sur le décor marine.
-      return (
-        <div className={cn("inline-flex items-center justify-center rounded-xl bg-white shadow-card", s.plate, className)}>
-          {imgEl}
-        </div>
-      );
-    }
-    return imgEl;
   }
 
   // ── Repli : logo reconstitué en SVG ──
