@@ -6,6 +6,7 @@ import {
   detectConflict, scaleReliable, ocrLooksUnreliable, duplicateDesignations,
   findOmissions, detectActorRole, cdpgfStructureDiff, numberingDropped,
   isValidStatus, ALL_STATUSES, fidelityScore,
+  normalizeActorTable, ambiguousActors, planTag, COMPLEMENT_TAG, ACTOR_ORDER,
 } from "./fidelity";
 
 // ── Hiérarchie des sources (§2) ───────────────────────────────────
@@ -208,6 +209,50 @@ describe("§7 CCTP fidèle : numérotation conservée", () => {
     const source = "1. Généralités\n1.1 Objet\n1.2 Normes\n2. Gros œuvre";
     const produced = "1. Généralités\n1.1 Objet\n2. Gros œuvre";
     expect(numberingDropped(source, produced)).toContain("1.2");
+  });
+});
+
+// ── R2 Table unique des intervenants ──────────────────────────────
+describe("R2 table des intervenants", () => {
+  it("renvoie toujours les 7 rôles, absents marqués « Non renseigné »", () => {
+    const t = normalizeActorTable([{ role: "MOA", value: "OPH Ariège", status: "confirmed" }]);
+    expect(t).toHaveLength(ACTOR_ORDER.length);
+    const moa = t.find((a) => a.role === "MOA")!;
+    expect(moa.value).toBe("OPH Ariège");
+    const bet = t.find((a) => a.role === "BET_STRUCTURE")!;
+    expect(bet.status).toBe("missing");
+    expect(bet.value).toMatch(/Non renseigné/);
+  });
+  it("rejette les placeholders comme valeur d'intervenant", () => {
+    const t = normalizeActorTable([{ role: "OPC", value: "TEST", status: "confirmed" }]);
+    expect(t.find((a) => a.role === "OPC")!.status).toBe("missing");
+  });
+  it("détecte un intervenant ambigu (même nom, 2 rôles)", () => {
+    const t = normalizeActorTable([
+      { role: "MOE", value: "Cabinet X", status: "confirmed" },
+      { role: "ARCHITECTE", value: "Cabinet X", status: "confirmed" },
+    ]);
+    expect(ambiguousActors(t).sort()).toEqual(["ARCHITECTE", "MOE"]);
+  });
+});
+
+// ── R3 Tag plan détaillé ──────────────────────────────────────────
+describe("R3 planTag détaillé", () => {
+  it("formate fichier/page/nom/cote/confiance", () => {
+    const tag = planTag({ file: "A-101.pdf", page: 3, name: "Plan RDC", reading: "65,60 m", confidence: "high" });
+    expect(tag).toBe("[SOURCE PLAN — A-101.pdf — p.3 — Plan RDC — 65,60 m — high]");
+  });
+  it("met « ? » pour les éléments inconnus", () => {
+    expect(planTag({ file: "A-101.pdf" })).toContain("page ?");
+    expect(planTag({})).toContain("fichier ?");
+  });
+});
+
+// ── R5 Tag complément ─────────────────────────────────────────────
+describe("R5 tag complément", () => {
+  it("mentionne « À VALIDER BET/MOE »", () => {
+    expect(COMPLEMENT_TAG).toContain("À VALIDER BET/MOE");
+    expect(COMPLEMENT_TAG).toContain("NON CONTRACTUEL");
   });
 });
 

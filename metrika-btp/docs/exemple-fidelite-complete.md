@@ -13,6 +13,35 @@ Pièce **absente** : CDPGF officiel, plan VRD.
 
 ---
 
+## 0. Chaîne CCTP durcie (R1–R7)
+
+1. **Hiérarchie des sources** : *CDPGF officiel > CCTP officiel > plans > rapports
+   annexes > compléments Metrika*. Un **CCTP officiel** fourni **pilote** le
+   contenu généré ; plans/rapports ne servent qu'à compléter/vérifier, jamais à
+   contredire.
+2. **Table unique des intervenants** (7 rôles : MOA, MOE, architecte, BET
+   structure, BE fluides, OPC, bureau de contrôle), chacun avec **source / page /
+   confiance / statut**. Aucun rôle n'est réinterprété dans le corps du document.
+3. **Tags plan détaillés** :
+   `[SOURCE PLAN — fichier — p.X — nom du plan/coupe/façade — cote/annotation — confiance]`.
+   Une donnée plan sans localisation est inexploitable.
+4. **Séparation stricte** : contractuel / calculé / à confirmer / complément Metrika.
+5. **Compléments Metrika** en annexe ou marqués
+   `[COMPLÉMENT METRIKA — NON CONTRACTUEL — À VALIDER BET/MOE]`.
+6. **Erreurs bloquantes** (export désactivé), appliquées CÔTÉ CODE :
+   - DPGF : quantité sans source, unité absente, prix remplacé par 0, placeholder.
+   - CCTP (post-génération, `cctp-validate`) : tag plan incomplet, placeholder,
+     norme ajoutée non taguée (mode enrichi). Intervenant ambigu / rôle déduit
+     **bloquent la génération** (table intervenants éditable pour corriger).
+   - Contradiction sémantique avec le CCTP officiel = relevée par le pré-audit IA.
+7. **Pré-audit obligatoire** avant la génération : pièces utilisées / manquantes,
+   données confirmées / à confirmer, contradictions, compléments Metrika. La
+   génération est **verrouillée** tant que cet audit n'a pas été produit ; si
+   l'audit conclut « non prêt », la génération est bloquée (override explicite
+   « sous ma responsabilité » possible).
+
+---
+
 ## 1. Identité du projet (corps contractuel)
 
 | Donnée | Valeur | Statut | Source |

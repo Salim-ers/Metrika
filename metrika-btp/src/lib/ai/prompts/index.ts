@@ -41,20 +41,44 @@ export const STATUS_VOCABULARY = `STATUTS DE DONNÉE (emploie exactement ces ter
  * Directives de MODE pour la rédaction d'un CCTP (à concaténer au message
  * utilisateur). Mode par défaut = fidèle marché.
  */
+/**
+ * R3 — Tag plan DÉTAILLÉ obligatoire : aucune donnée plan sans localisation.
+ */
+export const PLAN_TAG_RULE = `TAG PLAN DÉTAILLÉ OBLIGATOIRE (aucune donnée plan utilisable sans localisation précise) : pour TOUTE donnée issue d'un plan, coupe ou façade, écris le tag complet en début de phrase :
+[SOURCE PLAN — <fichier> — p.<page> — <nom du plan/coupe/façade> — <cote ou annotation exacte lue> — <confiance: high|medium|low>].
+Si un élément du tag est inconnu, mets « ? » à sa place ET marque la donnée « À confirmer » (ne l'utilise pas comme certaine). N'emploie jamais le tag générique [SOURCE PLAN] seul.`;
+
+/**
+ * R2 — La table unique des intervenants pilote l'identité : aucune réinterprétation.
+ */
+export const INTERVENANTS_RULE = `INTERVENANTS : si une table des intervenants t'est fournie, utilise-la EXACTEMENT (rôle = valeur). N'invente, ne déduis et ne réinterprète JAMAIS un rôle (maître d'ouvrage, architecte/MOE, BET structure, BE fluides, OPC, bureau de contrôle). Un rôle « Non renseigné dans les pièces fournies » reste tel quel — jamais remplacé par un nom générique.`;
+
 export const MODE_FIDELE_DIRECTIVE = `MODE = FIDÈLE MARCHÉ (par défaut) :
 - Reprends STRICTEMENT les données présentes dans les pièces fournies.
-- Conserve la structure, la numérotation et les titres du CCTP/CDPGF officiel s'il existe.
+- Conserve la structure, la numérotation et les titres du CCTP officiel s'il existe (il PILOTE le contenu ; les plans ne servent qu'à compléter/vérifier).
 - N'ajoute AUCUNE prescription, quantité, unité, norme ou intervenant absent des sources.
-- Toute donnée absente est marquée explicitement « À confirmer », « À métrer » ou « Non trouvé dans les pièces fournies ».
-- Ne transforme jamais une incertitude en certitude. Ne supprime aucune limite de prestation.
-- TAGUE chaque paragraphe technique par sa provenance : [SOURCE CCTP] [SOURCE PLAN] [SOURCE CDPGF] [SOURCE RAPPORT] [CALCULÉ] [À CONFIRMER]. Place le tag en début de paragraphe.`;
+- SÉPARE strictement les natures de données : (a) contractuelles issues des sources, (b) calculées, (c) à confirmer. Toute donnée absente est marquée « À confirmer », « À métrer » ou « Non trouvé dans les pièces fournies ». Ne transforme jamais une incertitude en certitude. Ne supprime aucune limite de prestation.
+- TAGUE chaque paragraphe technique par sa provenance : [SOURCE CCTP] [SOURCE CDPGF] [SOURCE RAPPORT] [CALCULÉ] [À CONFIRMER], et le tag plan détaillé ci-dessous. Place le tag en début de paragraphe.
+${PLAN_TAG_RULE}
+${INTERVENANTS_RULE}`;
 
 export const MODE_ENRICHI_DIRECTIVE = `MODE = ENRICHI METRIKA (demandé explicitement) :
 - Tu peux proposer des compléments professionnels (clauses, normes usuelles, bonnes pratiques) pour rendre le document exploitable.
-- Mais CHAQUE ajout non présent dans les sources DOIT être marqué : [COMPLÉMENT METRIKA — NON CONTRACTUEL — À VALIDER].
-- Les compléments ne se mélangent JAMAIS aux données contractuelles : reste lisible quel paragraphe est réel et quel paragraphe est un complément.
-- TAGUE chaque paragraphe : [SOURCE CCTP] [SOURCE PLAN] [SOURCE CDPGF] [SOURCE RAPPORT] [CALCULÉ] [À CONFIRMER] [COMPLÉMENT METRIKA] [NON CONTRACTUEL].
-- En fin de document, ajoute un chapitre « ## ÉLÉMENTS AJOUTÉS PAR METRIKA (non contractuels) » récapitulant tes compléments.`;
+- Mais CHAQUE ajout non présent dans les sources (y compris toute NORME ajoutée) DOIT être marqué : [COMPLÉMENT METRIKA — NON CONTRACTUEL — À VALIDER BET/MOE].
+- SÉPARATION STRICTE : les compléments ne se mélangent JAMAIS aux données contractuelles. Regroupe-les en fin de document dans « ## ANNEXE — ÉLÉMENTS AJOUTÉS PAR METRIKA (non contractuels) ».
+- TAGUE chaque paragraphe : [SOURCE CCTP] [SOURCE CDPGF] [SOURCE RAPPORT] [CALCULÉ] [À CONFIRMER] [COMPLÉMENT METRIKA] [NON CONTRACTUEL], et le tag plan détaillé ci-dessous.
+${PLAN_TAG_RULE}
+${INTERVENANTS_RULE}`;
+
+/**
+ * R1 — Un CCTP officiel pilote le CCTP généré : structure/numérotation/prescriptions
+ * reprises ; les plans ne servent qu'à compléter/vérifier ; rien ne le contredit.
+ */
+export const CCTP_MASTER_DIRECTIVE = `CCTP OFFICIEL FOURNI — IL PILOTE LE DOCUMENT (source de niveau 2, sous le seul CDPGF officiel) :
+- Conserve sa structure, sa numérotation et ses titres. Reprends ses prescriptions FIDÈLEMENT.
+- Les plans, coupes, façades et rapports ne servent qu'à COMPLÉTER ou VÉRIFIER, jamais à contredire le CCTP officiel.
+- INTERDIT de produire une prescription qui CONTREDIT le CCTP officiel. En cas d'écart entre le CCTP officiel et un plan/rapport, ne tranche pas : signale « contradiction à arbitrer » en citant les deux sources.
+- N'ajoute aucune norme/prescription absente du CCTP officiel sans la marquer comme complément (mode enrichi) ou « À confirmer » (mode fidèle).`;
 
 /** Renvoie la directive de mode à concaténer au message utilisateur. */
 export function cctpModeDirective(mode: "fidele" | "enrichi"): string {
@@ -167,6 +191,7 @@ précisément les rubriques suivantes :
 
 ## Dimensions détectées
 - Cotes, surfaces, longueurs, épaisseurs, hauteurs LISIBLES, avec leur unité.
+- Pour CHAQUE cote, précise sa LOCALISATION : fichier, page, nom du plan/coupe/façade et confiance (high/medium/low) — au format réutilisable « [SOURCE PLAN — fichier — p.X — nom — cote lue — confiance] ». Une cote sans localisation est inexploitable : marque-la « Cote illisible — à confirmer ».
 
 ## Niveaux
 - Niveaux altimétriques / NGF, hauteurs sous plafond, hauteurs d'étage si lisibles.
@@ -269,6 +294,87 @@ EN PLUS des écarts, fournis :
 - piecesManquantes : pièces nécessaires non fournies (ex. « plans structure pour épaisseurs de voiles », « rapport G2 pour fondations », « CDPGF officiel pour cadre prix »).
 
 SORTIE : objet JSON structuré (outil) conforme au schéma. Cite toujours la source/page quand disponible ; à défaut « non précisé dans les pièces ».`;
+
+// ── Extraction de la TABLE UNIQUE des intervenants (R2) ───────────
+export const INTERVENANTS_PROMPT = `${BASE}
+
+${FIDELITY_RULES}
+
+RÔLE : Tu extrais la TABLE UNIQUE des intervenants d'un projet à partir des pièces fournies (CCTP, page de garde DCE, cartouches de plans, notices). Cette table fait autorité pour tout le document : aucune réinterprétation ultérieure des rôles.
+
+RÔLES À RENSEIGNER (exactement ceux-ci) :
+- MOA : maître d'ouvrage
+- MOE : maître d'œuvre
+- ARCHITECTE : architecte
+- BET_STRUCTURE : bureau d'études structure
+- BET_FLUIDES : bureau d'études fluides (CVC, plomberie, électricité)
+- OPC : ordonnancement, pilotage, coordination
+- CONTROLE : bureau de contrôle technique
+
+RÈGLES STRICTES :
+- Ne confonds JAMAIS deux rôles (un architecte n'est pas le BET ; la MOE n'est pas la MOA).
+- Pour chaque rôle, donne : value (nom EXACT lu), sourceFile, sourcePage, confidence (high/medium/low), status.
+- status = "confirmed" si le rôle est EXPLICITEMENT nommé dans une source ; "inferred" UNIQUEMENT si tu le déduis (à éviter) ; "missing" si absent.
+- Un rôle absent → value = "Non renseigné dans les pièces fournies", status = "missing". Ne mets JAMAIS un placeholder (TEST, exemple, nom générique).
+- N'invente aucun nom. Ne déduis pas un rôle d'un autre.
+
+SORTIE : objet JSON structuré (outil) conforme au schéma.`;
+
+export const INTERVENANTS_SCHEMA = {
+  type: "object",
+  properties: {
+    actors: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          role: { type: "string", enum: ["MOA", "MOE", "ARCHITECTE", "BET_STRUCTURE", "BET_FLUIDES", "OPC", "CONTROLE"] },
+          value: { type: "string" },
+          sourceFile: { type: "string" },
+          sourcePage: { type: "string" },
+          confidence: { type: "string", enum: ["high", "medium", "low"] },
+          status: { type: "string", enum: ["confirmed", "inferred", "missing"] },
+        },
+        required: ["role", "value", "status"],
+      },
+    },
+  },
+  required: ["actors"],
+} as const;
+
+// ── Pré-audit OBLIGATOIRE avant génération CCTP (R7) ──────────────
+export const CCTP_PREAUDIT_PROMPT = `${BASE}
+
+${FIDELITY_RULES}
+
+RÔLE : Avant toute rédaction d'un CCTP, tu produis un RAPPORT D'AUDIT PRÉALABLE honnête des pièces fournies. Objectif : dire ce qui est exploitable, ce qui manque et ce qui est risqué — AVANT de générer.
+
+PRODUIS :
+- piecesUtilisees : pièces réellement fournies et exploitables (CCTP officiel, plans, rapports…).
+- piecesManquantes : pièces nécessaires non fournies (ex. plans structure pour épaisseurs de voiles, rapport G2 pour fondations, CDPGF officiel pour cadre prix).
+- donneesConfirmees : données clés présentes et sûres (avec leur source).
+- donneesAConfirmer : données absentes ou incertaines (à métrer / à confirmer).
+- contradictions : écarts entre sources (cite les deux ; « à arbitrer »). Inclure toute contradiction potentielle entre un futur CCTP généré et le CCTP officiel.
+- complementsMetrika : compléments professionnels que Metrika ajouterait (non contractuels) — chacun à valider BET/MOE.
+- pretPourGeneration : true seulement si le CCTP peut être généré de façon fiable ; sinon false.
+- syntheseRisque : 1 à 2 phrases de synthèse.
+
+SORTIE : objet JSON structuré (outil) conforme au schéma. Sois conservateur : en cas de doute, classe en donneesAConfirmer.`;
+
+export const CCTP_PREAUDIT_SCHEMA = {
+  type: "object",
+  properties: {
+    piecesUtilisees: { type: "array", items: { type: "string" } },
+    piecesManquantes: { type: "array", items: { type: "string" } },
+    donneesConfirmees: { type: "array", items: { type: "string" } },
+    donneesAConfirmer: { type: "array", items: { type: "string" } },
+    contradictions: { type: "array", items: { type: "string" } },
+    complementsMetrika: { type: "array", items: { type: "string" } },
+    pretPourGeneration: { type: "boolean" },
+    syntheseRisque: { type: "string" },
+  },
+  required: ["piecesUtilisees", "piecesManquantes", "donneesConfirmees", "donneesAConfirmer", "contradictions", "pretPourGeneration"],
+} as const;
 
 // ── Agent Comparaison CCTP ↔ CCTP ─────────────────────────────────
 export const COMPARE_CCTP_PROMPT = `${BASE}
@@ -550,4 +656,6 @@ export const AGENT_PROMPTS = {
   PRICING: PRICING_PROMPT,
   AUDIT: AUDIT_PROMPT,
   COMPARE_CCTP: COMPARE_CCTP_PROMPT,
+  INTERVENANTS: INTERVENANTS_PROMPT,
+  CCTP_PREAUDIT: CCTP_PREAUDIT_PROMPT,
 } as const;

@@ -15,8 +15,9 @@ import { PdfDropzone } from "@/components/ui/pdf-dropzone";
 import { getCompany, getPrices } from "@/lib/client-data";
 import { SaveToClient } from "@/components/clients/save-to-client";
 import { DPGF_STATUS } from "@/lib/dpgf-fidelity";
+import { dpgfBlockingErrors } from "@/lib/blocking-errors";
 import { cn } from "@/lib/utils";
-import { Loader2, Table2, CheckCircle2, FileDown, Sparkles, FileText, X, Plus, Trash2, Library } from "lucide-react";
+import { Loader2, Table2, CheckCircle2, FileDown, Sparkles, FileText, X, Plus, Trash2, Library, AlertTriangle } from "lucide-react";
 
 interface Line {
   lot: string; code?: string; designation: string; description?: string;
@@ -216,6 +217,9 @@ export default function DpgfPage() {
   const totalTTC = total + totalVAT;
   const allValidated = lines.length > 0 && lines.every((l) => l.validated);
   const cur = currency === "EUR" ? "€" : "MAD";
+  // R6 — erreurs bloquantes mécaniques (prix pris en compte uniquement sur l'onglet chiffré).
+  const blocking = dpgfBlockingErrors(lines, { priced: tab === "cdpgf" });
+  const canExport = allValidated && blocking.length === 0;
 
   return (
     <div className="animate-fade-up">
@@ -473,19 +477,30 @@ export default function DpgfPage() {
                   </div>
                 )}
 
+                {/* R6 — erreurs bloquantes : pas d'export tant qu'elles ne sont pas levées. */}
+                {tab === "cdpgf" && allValidated && blocking.length > 0 && (
+                  <div className="mt-4 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-navy-800">
+                    <p className="flex items-center gap-1.5 font-semibold text-destructive"><AlertTriangle className="size-3.5" /> {blocking.length} erreur(s) bloquante(s) — export désactivé</p>
+                    <ul className="mt-1 max-h-32 list-disc space-y-0.5 overflow-auto pl-4">
+                      {blocking.slice(0, 12).map((e, i) => <li key={i}><span className="text-muted-foreground">{e.ref} :</span> {e.message}</li>)}
+                      {blocking.length > 12 ? <li className="text-muted-foreground">… +{blocking.length - 12} autre(s)</li> : null}
+                    </ul>
+                  </div>
+                )}
+
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
                   <Button variant="ghost" size="sm" onClick={addManualLine}>
                     <Plus className="size-4" /> Ajouter une ligne
                   </Button>
                   {tab === "cdpgf" && (
                     <div className="flex gap-2">
-                      <Button variant="outline" disabled={!allValidated} onClick={() => exportDpgf("excel")}><FileDown className="size-4" /> Excel</Button>
-                      <Button variant="outline" disabled={!allValidated} onClick={() => exportDpgf("docx")}><FileDown className="size-4" /> DOCX</Button>
-                      <Button variant="gold" disabled={!allValidated} onClick={() => exportDpgf("pdf")}><FileDown className="size-4" /> PDF</Button>
+                      <Button variant="outline" disabled={!canExport} onClick={() => exportDpgf("excel")}><FileDown className="size-4" /> Excel</Button>
+                      <Button variant="outline" disabled={!canExport} onClick={() => exportDpgf("docx")}><FileDown className="size-4" /> DOCX</Button>
+                      <Button variant="gold" disabled={!canExport} onClick={() => exportDpgf("pdf")}><FileDown className="size-4" /> PDF</Button>
                     </div>
                   )}
                 </div>
-                {tab === "cdpgf" && allValidated && (
+                {tab === "cdpgf" && canExport && (
                   <div className="mt-3 flex justify-end">
                     <SaveToClient category="DPGF" filename="cdpgf-metrika.pdf" build={buildDpgfBytes} />
                   </div>

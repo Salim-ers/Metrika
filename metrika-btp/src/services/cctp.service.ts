@@ -1,8 +1,18 @@
 import { runClaude } from "@/lib/ai/client";
-import { CCTP_PROMPT, PLAN_ANALYSIS_PROMPT, cctpModeDirective } from "@/lib/ai/prompts";
+import { CCTP_PROMPT, PLAN_ANALYSIS_PROMPT, cctpModeDirective, CCTP_MASTER_DIRECTIVE } from "@/lib/ai/prompts";
 import type { GenerationMode } from "@/lib/fidelity";
 
 interface CctpSectionResult { lot: string; content: string }
+
+/** Bloc « CCTP officiel + intervenants » injecté en tête du message (R1/R2). */
+function sourcesBlock(params: { officialCctp?: string; intervenantsTable?: string }): string {
+  const parts: string[] = [];
+  if (params.officialCctp?.trim()) {
+    parts.push(`CCTP OFFICIEL (pilote le contenu) :\n"""\n${params.officialCctp.slice(0, 70000)}\n"""\n${CCTP_MASTER_DIRECTIVE}`);
+  }
+  if (params.intervenantsTable?.trim()) parts.push(params.intervenantsTable);
+  return parts.length ? parts.join("\n\n") + "\n\n" : "";
+}
 
 export interface PlanImage { data: string; mediaType: string }
 
@@ -51,8 +61,10 @@ export async function generateCctpSection(params: {
   context?: string;
   planContext?: string;
   mode?: GenerationMode;
+  officialCctp?: string;
+  intervenantsTable?: string;
 }): Promise<CctpSectionResult> {
-  const user = `Lot demandé : ${params.lot}
+  const user = `${sourcesBlock(params)}Lot demandé : ${params.lot}
 Type de projet : ${params.projectType ?? "non précisé"}
 Contexte / exigences particulières : ${params.context ?? "aucune"}
 ${params.planContext ? `\nSynthèse des plans du projet (à utiliser pour adapter les prescriptions) :\n${params.planContext}` : ""}
@@ -132,8 +144,8 @@ function passesFor(lot: string): { label: string; chapters: string }[] {
   ];
 }
 
-function baseUser(params: { lot: string; projectType?: string; context?: string; planContext?: string; mode?: GenerationMode }) {
-  return `Lot demandé : ${params.lot}
+function baseUser(params: { lot: string; projectType?: string; context?: string; planContext?: string; mode?: GenerationMode; officialCctp?: string; intervenantsTable?: string }) {
+  return `${sourcesBlock(params)}Lot demandé : ${params.lot}
 Type de projet : ${params.projectType ?? "non précisé"}
 Contexte / exigences particulières : ${params.context ?? "aucune"}
 ${params.planContext ? `\nSynthèse des plans du projet (à utiliser pour adapter les prescriptions) :\n${params.planContext}` : ""}
@@ -159,6 +171,8 @@ export async function generateCctpPass(params: {
   deep?: boolean;
   passIndex: number;
   mode?: GenerationMode;
+  officialCctp?: string;
+  intervenantsTable?: string;
 }): Promise<{ content: string; passCount: number; label: string }> {
   if (!params.deep) {
     const r = await generateCctpSection(params);

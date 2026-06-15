@@ -43,7 +43,7 @@ export const GENERATION_MODES: Record<GenerationMode, { label: string; short: st
   },
 };
 
-export const COMPLEMENT_TAG = "[COMPLÉMENT METRIKA — NON CONTRACTUEL — À VALIDER]";
+export const COMPLEMENT_TAG = "[COMPLÉMENT METRIKA — NON CONTRACTUEL — À VALIDER BET/MOE]";
 
 // ────────────────────────────────────────────────────────────────────────
 // 2. HIÉRARCHIE DES SOURCES (1 = plus fort, 5 = plus faible)
@@ -186,6 +186,83 @@ export function detectActorRole(label: string): ActorRole | null {
     if (ACTOR_ROLES[role].aliases.some((a) => k.includes(a))) return role;
   }
   return null;
+}
+
+/** Ordre de référence des intervenants dans la table unique du projet. */
+export const ACTOR_ORDER: ActorRole[] = ["MOA", "MOE", "ARCHITECTE", "BET_STRUCTURE", "BET_FLUIDES", "OPC", "CONTROLE"];
+
+/**
+ * Une ligne de la TABLE UNIQUE des intervenants (rôle figé + traçabilité).
+ * Le rôle est EXTRAIT, jamais réinterprété ailleurs dans le document.
+ */
+export interface ActorEntry {
+  role: ActorRole;
+  value: string;            // nom réel, ou NOT_FOUND_LABELS.identity si absent
+  source_file?: string;
+  source_page?: string;
+  confidence: Confidence;
+  status: DataStatus;       // confirmed (extrait) | inferred (déduit, interdit en final) | missing
+  notes?: string;
+}
+
+/**
+ * Normalise la table des intervenants : garantit qu'EXACTEMENT les 7 rôles de
+ * référence sont présents, une seule fois chacun, dans l'ordre canonique. Un
+ * rôle absent est marqué « Non renseigné dans les pièces fournies » (missing).
+ */
+export function normalizeActorTable(entries: Partial<ActorEntry>[]): ActorEntry[] {
+  const byRole = new Map<ActorRole, Partial<ActorEntry>>();
+  for (const e of entries) {
+    if (!e?.role || !(e.role in ACTOR_ROLES)) continue;
+    if (!byRole.has(e.role)) byRole.set(e.role, e);
+  }
+  return ACTOR_ORDER.map((role) => {
+    const e = byRole.get(role);
+    const value = e?.value?.trim();
+    if (!value || value.toLowerCase() === "non renseigné" || hasPlaceholder(value)) {
+      return { role, value: NOT_FOUND_LABELS.identity, confidence: "low", status: "missing" };
+    }
+    const status: DataStatus = isValidStatus(e?.status) ? (e!.status as DataStatus) : "confirmed";
+    return {
+      role,
+      value,
+      source_file: e?.source_file,
+      source_page: e?.source_page,
+      confidence: (["high", "medium", "low"] as const).includes(e?.confidence as Confidence) ? (e!.confidence as Confidence) : "medium",
+      status,
+      notes: e?.notes,
+    };
+  });
+}
+
+/** Une valeur d'intervenant non vide partagée par ≥ 2 rôles = ambiguïté. */
+export function ambiguousActors(table: ActorEntry[]): ActorRole[] {
+  const seen = new Map<string, ActorRole[]>();
+  for (const a of table) {
+    if (a.status === "missing") continue;
+    const key = a.value.toLowerCase().replace(/\s+/g, " ").trim();
+    if (!key) continue;
+    seen.set(key, [...(seen.get(key) ?? []), a.role]);
+  }
+  const dup = new Set<ActorRole>();
+  for (const roles of seen.values()) if (roles.length > 1) roles.forEach((r) => dup.add(r));
+  return [...dup];
+}
+
+/**
+ * Tag plan DÉTAILLÉ (R3) — aucune donnée plan utilisable sans localisation :
+ * [SOURCE PLAN — fichier — page — nom — cote/annotation — confiance].
+ */
+export function planTag(p: { file?: string; page?: string | number; name?: string; reading?: string; confidence?: string }): string {
+  const parts = [
+    "SOURCE PLAN",
+    p.file?.trim() || "fichier ?",
+    p.page != null && String(p.page).trim() ? `p.${p.page}` : "page ?",
+    p.name?.trim() || "plan/coupe/façade ?",
+    p.reading?.trim() || "cote/annotation ?",
+    p.confidence?.trim() || "confiance ?",
+  ];
+  return `[${parts.join(" — ")}]`;
 }
 
 // ────────────────────────────────────────────────────────────────────────
