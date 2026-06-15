@@ -41,17 +41,30 @@ describe("intervenantBlockingErrors (R6 — rôles)", () => {
     { role: "ARCHITECTE", value: "Cabinet Vidal", status: "confirmed" },
   ]);
 
-  it("rôle déduit (inferred) = bloquant", () => {
+  it("rôle déduit (inferred) SANS source = bloquant", () => {
     const table = normalizeActorTable([{ role: "BET_STRUCTURE", value: "BET déduit", status: "inferred" }]);
     expect(intervenantBlockingErrors(table).some((e) => e.code === "actor_inferred")).toBe(true);
   });
 
-  it("intervenant ambigu (même nom, 2 rôles) = bloquant", () => {
+  it("rôle « déduit » AVEC source = non bloquant (extrait, à confirmer)", () => {
+    const table = normalizeActorTable([{ role: "BET_STRUCTURE", value: "ESI Varilhes", status: "inferred", source_file: "PLAN.pdf", source_page: "Cartouche" }]);
+    expect(intervenantBlockingErrors(table).some((e) => e.code === "actor_inferred")).toBe(false);
+  });
+
+  it("intervenant ambigu (même nom, rôles INCOMPATIBLES) = bloquant", () => {
+    const table = normalizeActorTable([
+      { role: "ARCHITECTE", value: "Cabinet Vidal", status: "confirmed" },
+      { role: "CONTROLE", value: "Cabinet Vidal", status: "confirmed" },
+    ]);
+    expect(intervenantBlockingErrors(table).some((e) => e.code === "actor_ambiguous")).toBe(true);
+  });
+
+  it("MOE = Architecte (même société) = NON bloquant", () => {
     const table = normalizeActorTable([
       { role: "MOE", value: "Cabinet Vidal", status: "confirmed" },
       { role: "ARCHITECTE", value: "Cabinet Vidal", status: "confirmed" },
     ]);
-    expect(intervenantBlockingErrors(table).some((e) => e.code === "actor_ambiguous")).toBe(true);
+    expect(intervenantBlockingErrors(table).some((e) => e.code === "actor_ambiguous")).toBe(false);
   });
 
   it("rôles manquants (Non renseigné) = pas d'erreur bloquante", () => {

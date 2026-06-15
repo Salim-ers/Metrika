@@ -67,20 +67,24 @@ export function dpgfBlockingErrors(lines: DpgfErrLine[], opts?: { priced?: boole
 }
 
 /**
- * Erreurs bloquantes de la table des intervenants : rôle déduit (inferred) ou
- * intervenant ambigu (même nom pour plusieurs rôles). Un rôle « missing »
- * (Non renseigné) n'est PAS bloquant — c'est une absence honnête.
+ * Erreurs bloquantes de la table des intervenants :
+ *  - rôle DÉDUIT (inferred) SANS aucune source → bloquant (vraie déduction) ;
+ *    un « inferred » accompagné d'une source (fichier/page) est considéré comme
+ *    extrait → simple alerte non bloquante (à confirmer par l'utilisateur) ;
+ *  - intervenant ambigu (même nom pour des rôles INCOMPATIBLES) → bloquant.
+ * Un rôle « missing » (Non renseigné) n'est jamais bloquant — absence honnête.
  */
 export function intervenantBlockingErrors(table: ActorEntry[]): BlockingError[] {
   const out: BlockingError[] = [];
   const amb = new Set(ambiguousActors(table));
   for (const a of table) {
     const label = ACTOR_ROLES[a.role].label;
-    if (a.status === "inferred") {
-      out.push({ code: "actor_inferred", message: `Rôle « ${label} » DÉDUIT au lieu d'être extrait d'une source. À confirmer.`, ref: label });
+    const hasSource = !!(a.source_file?.trim() || a.source_page?.trim());
+    if (a.status === "inferred" && !hasSource) {
+      out.push({ code: "actor_inferred", message: `Rôle « ${label} » DÉDUIT sans source — à extraire d'une pièce ou marquer « Absent ».`, ref: label });
     }
     if (amb.has(a.role)) {
-      out.push({ code: "actor_ambiguous", message: `Intervenant ambigu : « ${a.value} » rattaché à plusieurs rôles.`, ref: label });
+      out.push({ code: "actor_ambiguous", message: `Intervenant ambigu : « ${a.value} » rattaché à des rôles incompatibles.`, ref: label });
     }
   }
   return out;

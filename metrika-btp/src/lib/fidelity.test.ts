@@ -227,12 +227,19 @@ describe("R2 table des intervenants", () => {
     const t = normalizeActorTable([{ role: "OPC", value: "TEST", status: "confirmed" }]);
     expect(t.find((a) => a.role === "OPC")!.status).toBe("missing");
   });
-  it("détecte un intervenant ambigu (même nom, 2 rôles)", () => {
+  it("détecte un intervenant ambigu (même nom, rôles INCOMPATIBLES)", () => {
     const t = normalizeActorTable([
-      { role: "MOE", value: "Cabinet X", status: "confirmed" },
       { role: "ARCHITECTE", value: "Cabinet X", status: "confirmed" },
+      { role: "CONTROLE", value: "Cabinet X", status: "confirmed" },
     ]);
-    expect(ambiguousActors(t).sort()).toEqual(["ARCHITECTE", "MOE"]);
+    expect(ambiguousActors(t).sort()).toEqual(["ARCHITECTE", "CONTROLE"]);
+  });
+  it("MOE = Architecte (même société) n'est PAS ambigu", () => {
+    const t = normalizeActorTable([
+      { role: "MOE", value: "Architecture & Paysage", status: "confirmed" },
+      { role: "ARCHITECTE", value: "Architecture & Paysage", status: "confirmed" },
+    ]);
+    expect(ambiguousActors(t)).toEqual([]);
   });
 });
 

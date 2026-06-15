@@ -192,6 +192,17 @@ export function detectActorRole(label: string): ActorRole | null {
 export const ACTOR_ORDER: ActorRole[] = ["MOA", "MOE", "ARCHITECTE", "BET_STRUCTURE", "BET_FLUIDES", "OPC", "CONTROLE"];
 
 /**
+ * Rôles qui peuvent LÉGITIMEMENT être tenus par le même intervenant (donc même
+ * valeur sans ambiguïté). Cas classique : l'architecte est aussi le maître
+ * d'œuvre. Partager une valeur HORS de ces groupes = ambiguïté à lever.
+ */
+export const COMPATIBLE_ROLE_GROUPS: ActorRole[][] = [["MOE", "ARCHITECTE"]];
+
+function rolesAreCompatible(roles: ActorRole[]): boolean {
+  return COMPATIBLE_ROLE_GROUPS.some((g) => roles.every((r) => g.includes(r)));
+}
+
+/**
  * Une ligne de la TABLE UNIQUE des intervenants (rôle figé + traçabilité).
  * Le rôle est EXTRAIT, jamais réinterprété ailleurs dans le document.
  */
@@ -235,7 +246,10 @@ export function normalizeActorTable(entries: Partial<ActorEntry>[]): ActorEntry[
   });
 }
 
-/** Une valeur d'intervenant non vide partagée par ≥ 2 rôles = ambiguïté. */
+/**
+ * Une même valeur partagée par ≥ 2 rôles INCOMPATIBLES = ambiguïté. Les
+ * recouvrements légitimes (ex. MOE = Architecte) ne sont PAS signalés.
+ */
 export function ambiguousActors(table: ActorEntry[]): ActorRole[] {
   const seen = new Map<string, ActorRole[]>();
   for (const a of table) {
@@ -245,7 +259,9 @@ export function ambiguousActors(table: ActorEntry[]): ActorRole[] {
     seen.set(key, [...(seen.get(key) ?? []), a.role]);
   }
   const dup = new Set<ActorRole>();
-  for (const roles of seen.values()) if (roles.length > 1) roles.forEach((r) => dup.add(r));
+  for (const roles of seen.values()) {
+    if (roles.length > 1 && !rolesAreCompatible(roles)) roles.forEach((r) => dup.add(r));
+  }
   return [...dup];
 }
 

@@ -312,9 +312,10 @@ RÔLES À RENSEIGNER (exactement ceux-ci) :
 - CONTROLE : bureau de contrôle technique
 
 RÈGLES STRICTES :
-- Ne confonds JAMAIS deux rôles (un architecte n'est pas le BET ; la MOE n'est pas la MOA).
+- Ne confonds JAMAIS deux rôles. EXCEPTION légitime : l'architecte est souvent AUSSI le maître d'œuvre — dans ce cas, indique la MÊME société pour ARCHITECTE et MOE (ce n'est pas une ambiguïté).
 - Pour chaque rôle, donne : value (nom EXACT lu), sourceFile, sourcePage, confidence (high/medium/low), status.
-- status = "confirmed" si le rôle est EXPLICITEMENT nommé dans une source ; "inferred" UNIQUEMENT si tu le déduis (à éviter) ; "missing" si absent.
+- status = "confirmed" DÈS QUE tu LIS le nom dans une source (cartouche, page de garde, CCTP) — même si tu n'es pas certain à 100 %, mets la confidence en conséquence mais le status reste "confirmed". Si tu renseignes sourceFile/sourcePage, le status DOIT être "confirmed".
+- status = "inferred" UNIQUEMENT si tu proposes un nom SANS le voir dans une source (à éviter ; laisse plutôt "missing").
 - Un rôle absent → value = "Non renseigné dans les pièces fournies", status = "missing". Ne mets JAMAIS un placeholder (TEST, exemple, nom générique).
 - N'invente aucun nom. Ne déduis pas un rôle d'un autre.
 
