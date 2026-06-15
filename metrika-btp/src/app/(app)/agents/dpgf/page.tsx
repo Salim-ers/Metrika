@@ -14,13 +14,18 @@ import { useCurrency, convertAmount } from "@/lib/use-currency";
 import { PdfDropzone } from "@/components/ui/pdf-dropzone";
 import { getCompany, getPrices } from "@/lib/client-data";
 import { SaveToClient } from "@/components/clients/save-to-client";
+import { DPGF_STATUS } from "@/lib/dpgf-fidelity";
 import { cn } from "@/lib/utils";
 import { Loader2, Table2, CheckCircle2, FileDown, Sparkles, FileText, X, Plus, Trash2, Library } from "lucide-react";
 
 interface Line {
   lot: string; code?: string; designation: string; description?: string;
   unit: string; quantity: number; unitPrice: number; quantitySource?: string; validated: boolean;
+  status?: string; confidence?: string; sourceExcerpt?: string;
 }
+
+/** Statut de fiabilité affiché : explicite, sinon dérivé de la quantité. */
+const lineStatus = (l: { status?: string; quantity: number }): string => l.status || (l.quantity > 0 ? "confirmed" : "to_measure");
 
 interface PriceItem { id: string; designation: string; unit: string; sellingPrice: number; lot?: string | null; category?: string | null }
 
@@ -29,6 +34,7 @@ const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,
 const emptyLine = (): Line => ({
   lot: LOTS_BTP[1] ?? "Gros Œuvre", designation: "", description: "",
   unit: "U", quantity: 1, unitPrice: 0, validated: false,
+  quantitySource: "metre", status: "confirmed", // saisie manuelle = métré de l'utilisateur
 });
 
 export default function DpgfPage() {
@@ -127,7 +133,8 @@ export default function DpgfPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setLines(data.lines.map((l: Line) => ({ ...l, unitPrice: 0, validated: false })));
-      toast.success(`${data.lines.length} ouvrage(s) extraits. Vérifiez les quantités proposées.`);
+      const toMeasure = (data.lines as Line[]).filter((l) => lineStatus(l) === "to_measure").length;
+      toast.success(`${data.lines.length} ouvrage(s) extraits — ${toMeasure} « À métrer » (quantité non sourcée).`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erreur");
     } finally { setBusy(false); setPhase(""); }
@@ -324,7 +331,10 @@ export default function DpgfPage() {
                               placeholder="Notes / dimensions (optionnel)"
                               className="flex-1 min-w-[120px] rounded border border-input bg-card px-1.5 py-0.5 text-xs text-muted-foreground"
                             />
-                            {l.quantitySource ? <span className="text-[11px] text-muted-foreground/70">source: {l.quantitySource}</span> : null}
+                            {(() => {
+                              const st = DPGF_STATUS[lineStatus(l) as keyof typeof DPGF_STATUS] ?? DPGF_STATUS.to_measure;
+                              return <Badge variant={st.variant} title={l.sourceExcerpt ? `Source : ${l.sourceExcerpt}` : (l.quantitySource ? `Source : ${l.quantitySource}` : undefined)}>{st.label}</Badge>;
+                            })()}
                           </div>
                         </td>
                         <td className="px-2 py-2">

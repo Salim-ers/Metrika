@@ -1,5 +1,6 @@
 import { runClaude } from "@/lib/ai/client";
 import { DPGF_PROMPT, DPGF_SCHEMA } from "@/lib/ai/prompts";
+import { enforceSourcedQuantities } from "@/lib/dpgf-fidelity";
 import type { DpgfLineInput } from "@/types";
 
 export interface PlanImage { data: string; mediaType: string }
@@ -30,5 +31,6 @@ Extrais les ouvrages et propose les quantités.`;
     schema: DPGF_SCHEMA,
     maxTokens: 8000,
   });
-  return res.lines ?? [];
+  // Garde-fou anti-hallucination : aucune quantité non sourcée ne passe (→ « À métrer »).
+  return enforceSourcedQuantities(res.lines ?? []);
 }
