@@ -40,12 +40,12 @@ function classify(line: string): { kind: "h2" | "h3" | "li" | "p" | "blank"; tex
 type Item =
   | { kind: "chapter"; id: number; num: string; text: string }
   | { kind: "h2"; id: number; num: string; text: string }
-  | { kind: "h3"; num: string; text: string }
+  | { kind: "h3"; id: number; num: string; text: string }
   | { kind: "li"; text: string }
   | { kind: "p"; text: string }
   | { kind: "blank" };
 
-interface TocEntry { level: 0 | 1; id: number; num: string; text: string }
+interface TocEntry { level: 0 | 1 | 2; id: number; num: string; text: string }
 
 /** Numérote les lots (chapitres) et leurs sous-titres → items + sommaire. */
 function buildItems(sections: CctpSection[]): { items: Item[]; toc: TocEntry[] } {
@@ -70,7 +70,10 @@ function buildItems(sections: CctpSection[]): { items: Item[]; toc: TocEntry[] }
         toc.push({ level: 1, id: hid, num, text });
       } else if (kind === "h3") {
         h3c++;
-        items.push({ kind: "h3", num: `${chap}.${h2c || 1}.${h3c}`, text });
+        const num = `${chap}.${h2c || 1}.${h3c}`;
+        const hid = idc++;
+        items.push({ kind: "h3", id: hid, num, text });
+        toc.push({ level: 2, id: hid, num, text });
       } else if (kind === "li") items.push({ kind: "li", text });
       else if (kind === "p") items.push({ kind: "p", text });
       else items.push({ kind: "blank" });
@@ -229,8 +232,11 @@ export async function exportCctpPdf(
       }
       y -= 2;
     } else if (it.kind === "h3") {
+      ensure(16); entryPage.set(it.id, pageNo);
+      let firstH3 = true;
       for (const ln of wrap(`${it.num}  ${it.text}`, bold, 9.5, W - 2 * M - 10)) {
         ensure(14); page.drawText(safe(ln), { x: M + 10, y, size: 9.5, font: bold, color: NAVY }); y -= 14;
+        if (firstH3) { entryPage.set(it.id, pageNo); firstH3 = false; }
       }
     } else if (it.kind === "li") {
       const lines = wrap(it.text, font, 9, W - 2 * M - 16);
@@ -254,10 +260,10 @@ export async function exportCctpPdf(
   let tpage = startTocPage(0);
   for (const e of toc) {
     if (ty < M + FOOT + 6) { tp++; tpage = startTocPage(Math.min(tp, tocPages.length - 1)); }
-    const f = e.level === 0 ? bold : font;
-    const size = e.level === 0 ? 10 : 9;
-    const indent = e.level === 0 ? 0 : 16;
-    const color = e.level === 0 ? NAVY : GREY;
+    const f = e.level === 0 ? bold : e.level === 1 ? bold : font;
+    const size = e.level === 0 ? 10 : e.level === 1 ? 9.5 : 8.5;
+    const indent = e.level === 0 ? 0 : e.level === 1 ? 14 : 30;
+    const color = e.level === 0 ? NAVY : e.level === 1 ? NAVY : GREY;
     if (e.level === 0) ty -= 6;
     const label = safe(`${e.num}   ${e.text}`);
     const pnum = safe(`p. ${entryPage.get(e.id) ?? "-"}`);
@@ -273,7 +279,7 @@ export async function exportCctpPdf(
       const n = Math.max(0, Math.floor((dotsEnd - dotsStart) / dot));
       if (n > 0) tpage.drawText(".".repeat(n), { x: dotsStart, y: ty, size: 8, font, color: LIGHT });
     }
-    ty -= e.level === 0 ? 17 : 14;
+    ty -= e.level === 0 ? 17 : e.level === 1 ? 14 : 12;
   }
 
   // ───────────── PIEDS DE PAGE (sauf garde) ─────────────
