@@ -12,14 +12,19 @@ import { formatMoney } from "@/lib/utils";
 import { UNITS, LOTS_BTP } from "@/lib/constants";
 import { useCurrency, convertAmount } from "@/lib/use-currency";
 import { PdfDropzone } from "@/components/ui/pdf-dropzone";
-import { getCompany } from "@/lib/client-data";
+import { getCompany, getPrices } from "@/lib/client-data";
 import { SaveToClient } from "@/components/clients/save-to-client";
-import { Loader2, Table2, CheckCircle2, FileDown, Sparkles, FileText, X, Plus, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Loader2, Table2, CheckCircle2, FileDown, Sparkles, FileText, X, Plus, Trash2, Library } from "lucide-react";
 
 interface Line {
   lot: string; code?: string; designation: string; description?: string;
   unit: string; quantity: number; unitPrice: number; quantitySource?: string; validated: boolean;
 }
+
+interface PriceItem { id: string; designation: string; unit: string; sellingPrice: number; lot?: string | null; category?: string | null }
+
+const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 
 const emptyLine = (): Line => ({
   lot: LOTS_BTP[1] ?? "Gros Œuvre", designation: "", description: "",
@@ -37,8 +42,34 @@ export default function DpgfPage() {
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState("");
   const [company, setCompany] = useState<Record<string, unknown> | null>(null);
+  const [prices, setPrices] = useState<PriceItem[]>([]);
+  const [tab, setTab] = useState<"dpgf" | "cdpgf">("dpgf");
 
-  useEffect(() => { getCompany().then(setCompany); }, []);
+  useEffect(() => {
+    getCompany().then(setCompany);
+    getPrices().then((items) => setPrices(items as never)).catch(() => {});
+  }, []);
+
+  // ── Connexion bibliothèque de prix (onglet CDPGF) ──
+  function pickPrice(i: number, priceId: string) {
+    const p = prices.find((x) => x.id === priceId);
+    if (!p) return;
+    update(i, { unitPrice: p.sellingPrice, unit: p.unit || lines[i].unit, validated: false });
+  }
+  function autofillFromLibrary() {
+    if (prices.length === 0) { toast.error("Bibliothèque de prix vide. Ajoutez des prix d'abord."); return; }
+    let matched = 0;
+    setLines((arr) => arr.map((l) => {
+      const nl = norm(l.designation);
+      if (!nl) return l;
+      const cands = prices.filter((p) => { const np = norm(p.designation); return np && (nl.includes(np) || np.includes(nl)); });
+      if (cands.length === 0) return l;
+      const best = cands.sort((a, b) => b.designation.length - a.designation.length)[0];
+      matched++;
+      return { ...l, unitPrice: best.sellingPrice, validated: false };
+    }));
+    toast.success(`${matched} ligne(s) chiffrée(s) depuis la bibliothèque.`);
+  }
 
   // Conversion des prix unitaires au changement de devise (switch topbar).
   const prevCurrency = useRef(currency);
@@ -141,7 +172,11 @@ export default function DpgfPage() {
   }
 
   const total = lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
+  const vatRate = Number(company?.vatRate) || 20;
+  const totalVAT = total * (vatRate / 100);
+  const totalTTC = total + totalVAT;
   const allValidated = lines.length > 0 && lines.every((l) => l.validated);
+  const cur = currency === "EUR" ? "€" : "MAD";
 
   return (
     <div className="animate-fade-up">
@@ -206,18 +241,48 @@ export default function DpgfPage() {
             </Card>
           ) : (
             <Card>
-              <CardHeader className="flex-row items-center justify-between">
-                <CardTitle className="text-navy-900">Décomposition ({lines.length} lignes)</CardTitle>
-                <div className="flex items-center gap-2">
-                  <Badge variant={allValidated ? "success" : "warning"}>
-                    {lines.filter((l) => l.validated).length}/{lines.length} validées
-                  </Badge>
-                  <Button variant="outline" size="sm" onClick={toggleAllValidated}>
-                    <CheckCircle2 className="size-4" /> {allValidated ? "Tout dévalider" : "Tout valider"}
-                  </Button>
+              <CardHeader className="gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <CardTitle className="text-navy-900">{tab === "dpgf" ? "Métré (DPGF)" : "Chiffrage (CDPGF)"} · {lines.length} lignes</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={allValidated ? "success" : "warning"}>
+                      {lines.filter((l) => l.validated).length}/{lines.length} validées
+                    </Badge>
+                    <Button variant="outline" size="sm" onClick={toggleAllValidated}>
+                      <CheckCircle2 className="size-4" /> {allValidated ? "Tout dévalider" : "Tout valider"}
+                    </Button>
+                  </div>
                 </div>
+                {/* Onglets DPGF (métré) / CDPGF (chiffré) */}
+                <div className="flex w-fit gap-0.5 rounded-lg border border-border bg-muted/40 p-0.5">
+                  {([["dpgf", "DPGF — métré"], ["cdpgf", "CDPGF — chiffré"]] as const).map(([v, label]) => (
+                    <button
+                      key={v}
+                      onClick={() => setTab(v)}
+                      className={cn("rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
+                        tab === v ? "bg-gold-500 text-navy-900 shadow-gold" : "text-muted-foreground hover:text-navy-800")}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {tab === "dpgf"
+                    ? "Désignations et quantités (métré). Les prix se renseignent dans l’onglet CDPGF."
+                    : "Chiffrage connecté à la bibliothèque de prix. Renseignez les P.U. (auto ou manuel)."}
+                </p>
               </CardHeader>
               <CardContent className="overflow-x-auto">
+                {tab === "cdpgf" && (
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-gold-200 bg-gold-50/40 px-3 py-2 text-xs">
+                    <span className="flex items-center gap-1.5 text-navy-800">
+                      <Library className="size-4 text-gold-600" /> Bibliothèque de prix connectée ({prices.length} prix)
+                    </span>
+                    <Button variant="outline" size="sm" disabled={prices.length === 0} onClick={autofillFromLibrary}>
+                      Remplir les P.U. automatiquement
+                    </Button>
+                  </div>
+                )}
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b text-left text-[11px] uppercase tracking-wider text-muted-foreground">
@@ -225,8 +290,11 @@ export default function DpgfPage() {
                       <th className="pb-2 pr-2">Désignation</th>
                       <th className="pb-2 px-2">U.</th>
                       <th className="pb-2 px-2 text-right">Qté</th>
-                      <th className="pb-2 px-2 text-right">P.U. ({currency === "EUR" ? "€" : "MAD"})</th>
-                      <th className="pb-2 px-2 text-right">Montant HT</th>
+                      {tab === "cdpgf" && <>
+                        <th className="pb-2 px-2">Bibliothèque</th>
+                        <th className="pb-2 px-2 text-right">P.U. ({cur})</th>
+                        <th className="pb-2 px-2 text-right">Montant HT</th>
+                      </>}
                       <th className="pb-2 pl-2"></th>
                     </tr>
                   </thead>
@@ -253,7 +321,7 @@ export default function DpgfPage() {
                             <input
                               value={l.description ?? ""}
                               onChange={(e) => update(i, { description: e.target.value })}
-                              placeholder="Notes (optionnel)"
+                              placeholder="Notes / dimensions (optionnel)"
                               className="flex-1 min-w-[120px] rounded border border-input bg-card px-1.5 py-0.5 text-xs text-muted-foreground"
                             />
                             {l.quantitySource ? <span className="text-[11px] text-muted-foreground/70">source: {l.quantitySource}</span> : null}
@@ -272,10 +340,23 @@ export default function DpgfPage() {
                         <td className="px-2 py-2 text-right">
                           <input type="number" value={l.quantity} onChange={(e) => update(i, { quantity: +e.target.value, validated: false })} className="w-20 rounded border border-input bg-card px-2 py-1 text-right" />
                         </td>
-                        <td className="px-2 py-2 text-right">
-                          <input type="number" value={l.unitPrice} onChange={(e) => update(i, { unitPrice: +e.target.value, validated: false })} className="w-24 rounded border border-input bg-card px-2 py-1 text-right" />
-                        </td>
-                        <td className="px-2 py-2 text-right font-medium text-navy-900">{money(l.quantity * l.unitPrice)}</td>
+                        {tab === "cdpgf" && <>
+                          <td className="px-2 py-2">
+                            <select
+                              value=""
+                              onChange={(e) => { pickPrice(i, e.target.value); e.currentTarget.value = ""; }}
+                              className="w-40 rounded border border-input bg-card px-1 py-1 text-xs text-muted-foreground"
+                              disabled={prices.length === 0}
+                            >
+                              <option value="">{prices.length ? "Choisir un prix…" : "Bibliothèque vide"}</option>
+                              {prices.map((p) => <option key={p.id} value={p.id}>{p.designation} — {money(p.sellingPrice)}/{p.unit}</option>)}
+                            </select>
+                          </td>
+                          <td className="px-2 py-2 text-right">
+                            <input type="number" value={l.unitPrice} onChange={(e) => update(i, { unitPrice: +e.target.value, validated: false })} className="w-24 rounded border border-input bg-card px-2 py-1 text-right" />
+                          </td>
+                          <td className="px-2 py-2 text-right font-medium text-navy-900">{money(l.quantity * l.unitPrice)}</td>
+                        </>}
                         <td className="pl-2 py-2">
                           <div className="flex items-center gap-1">
                             <button onClick={() => update(i, { validated: !l.validated })} title="Valider la ligne">
@@ -289,28 +370,33 @@ export default function DpgfPage() {
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot>
-                    <tr className="font-semibold text-navy-900">
-                      <td colSpan={5} className="pt-3 text-right">Total HT estimé</td>
-                      <td className="pt-3 text-right">{money(total)}</td>
-                      <td></td>
-                    </tr>
-                  </tfoot>
                 </table>
+
+                {tab === "cdpgf" && (
+                  <div className="mt-4 flex justify-end">
+                    <div className="w-64 space-y-1.5 text-sm">
+                      <div className="flex justify-between text-muted-foreground"><span>Total HT</span><span className="font-medium text-navy-800">{money(total)}</span></div>
+                      <div className="flex justify-between text-muted-foreground"><span>TVA ({vatRate} %)</span><span>{money(totalVAT)}</span></div>
+                      <div className="flex justify-between border-t border-navy-200 pt-1.5 text-base font-semibold text-navy-900"><span>Total TTC</span><span className="text-gold-600">{money(totalTTC)}</span></div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
                   <Button variant="ghost" size="sm" onClick={addManualLine}>
                     <Plus className="size-4" /> Ajouter une ligne
                   </Button>
-                  <div className="flex gap-2">
-                    <Button variant="outline" disabled={!allValidated} onClick={() => exportDpgf("excel")}><FileDown className="size-4" /> Excel</Button>
-                    <Button variant="outline" disabled={!allValidated} onClick={() => exportDpgf("docx")}><FileDown className="size-4" /> DOCX</Button>
-                    <Button variant="gold" disabled={!allValidated} onClick={() => exportDpgf("pdf")}><FileDown className="size-4" /> PDF</Button>
-                  </div>
+                  {tab === "cdpgf" && (
+                    <div className="flex gap-2">
+                      <Button variant="outline" disabled={!allValidated} onClick={() => exportDpgf("excel")}><FileDown className="size-4" /> Excel</Button>
+                      <Button variant="outline" disabled={!allValidated} onClick={() => exportDpgf("docx")}><FileDown className="size-4" /> DOCX</Button>
+                      <Button variant="gold" disabled={!allValidated} onClick={() => exportDpgf("pdf")}><FileDown className="size-4" /> PDF</Button>
+                    </div>
+                  )}
                 </div>
-                {allValidated && (
+                {tab === "cdpgf" && allValidated && (
                   <div className="mt-3 flex justify-end">
-                    <SaveToClient category="DPGF" filename="dpgf-metrika.pdf" build={buildDpgfBytes} />
+                    <SaveToClient category="DPGF" filename="cdpgf-metrika.pdf" build={buildDpgfBytes} />
                   </div>
                 )}
               </CardContent>
