@@ -112,30 +112,30 @@ export default function CctpPage() {
 
       // 2) Génération lot par lot ; pour chaque lot, les passes sont lancées en
       //    PARALLÈLE (1 requête HTTP = 1 passe = 1 appel IA court, sous la limite).
-      const passCountOf = (lot: string) => (deep ? (/gros\s*[œo]e?uvre/i.test(lot) ? 3 : 2) : 1);
       const built: Section[] = [];
       let anyFail = false;
       for (let li = 0; li < selected.length; li++) {
         const lot = selected[li];
-        const pc = passCountOf(lot);
         built.push({ lot, content: "", validated: false });
         const idx = built.length - 1;
         if (idx === 0) setOpen({ 0: true });
         setSections([...built]);
-        // Passes SÉQUENTIELLES (évite les pics de débit / 429) + ajout progressif.
+        // Passes SÉQUENTIELLES + ajout progressif. Le nombre de passes vient du
+        // serveur (passCount) : le document s'étoffe partie après partie.
         const parts: string[] = [];
-        for (let pi = 0; pi < pc; pi++) {
-          setPhase(`${lot} (${li + 1}/${selected.length})${pc > 1 ? ` — partie ${pi + 1}/${pc}` : ""}…`);
+        let pc = deep ? 0 : 1; // 0 = inconnu jusqu'à la 1re réponse
+        let pi = 0;
+        do {
+          setPhase(`${lot} (${li + 1}/${selected.length})${pc > 1 ? ` — partie ${pi + 1}/${pc}` : deep ? ` — partie ${pi + 1}` : ""}…`);
           const { ok, d } = await post({ lot, projectType, context, planContext: planCtx, deep, passIndex: pi });
-          if (ok && d?.content) {
-            parts.push(d.content as string);
-          } else {
-            anyFail = true;
-            parts.push(`## Partie ${pi + 1} — à régénérer\n\n${(d && d.error) || "Échec de génération."}`);
-          }
+          if (typeof d?.passCount === "number" && d.passCount > 0) pc = d.passCount;
+          if (pc === 0) pc = 1;
+          if (ok && d?.content) parts.push(d.content as string);
+          else { anyFail = true; parts.push(`## Partie ${pi + 1} — à régénérer\n\n${(d && d.error) || "Échec de génération."}`); }
           built[idx] = { ...built[idx], content: parts.join("\n\n") };
-          setSections([...built]); // la section se remplit passe après passe
-        }
+          setSections([...built]);
+          pi++;
+        } while (pi < pc && pi < 8);
       }
       if (built.length === 0) throw new Error("Aucune section générée.");
       stopTimer(t0);

@@ -61,34 +61,69 @@ Rédige la section CCTP de ce lot, niveau économiste senior, intégrable direct
   return { lot: params.lot, content };
 }
 
-/** Définit les passes de rédaction d'un lot (mode exhaustif). */
+// Bloc Généralités commun à tous les lots : impose le DOUBLE référentiel FR + MA.
+const GENERALITES_CHAPTER =
+  "## GÉNÉRALITÉS, en sous-sections détaillées et développées : " +
+  "### Objet et consistance des travaux ; " +
+  "### Références réglementaires — cite EXPLICITEMENT et SÉPARÉMENT le double référentiel : " +
+  "(a) FRANCE : NF DTU applicables au lot, normes NF EN et Eurocodes (NF EN 1990 à 1999, dont NF EN 1992 béton et NF EN 1998 parasismique), fascicules du CCTG, CCAG-Travaux, Code de la commande publique, réglementation thermique/environnementale en vigueur ; " +
+  "(b) MAROC : normes marocaines NM, Règlement Parasismique RPS 2000 (version en vigueur), Règlement de Construction Parasismique, DTU/CPT applicables, CCAG-T marocain et réglementation des marchés publics marocains ; " +
+  "### Coordination interentreprises et gestion des interfaces ; " +
+  "### Limites de prestations (ce qui est dû / non dû au présent lot) ; " +
+  "### Documents à fournir par l'entreprise (plans d'exécution, notes de calcul, fiches techniques, PV) ; " +
+  "### Contrôles, essais et épreuves ; " +
+  "### Dossier des ouvrages exécutés (DOE) et DIUO. Développe chaque sous-section en plusieurs paragraphes.";
+
+/** Définit les passes de rédaction d'un lot (mode exhaustif, document ≥ 30 pages). */
 function passesFor(lot: string): { label: string; chapters: string }[] {
   const isGO = /gros\s*[œo]e?uvre/i.test(lot);
-  const common = {
-    label: "Généralités & travaux préparatoires",
-    chapters:
-      "## GÉNÉRALITÉS (Objet et consistance des travaux ; Références réglementaires ; Coordination interentreprises ; Limites de prestations ; Documents à fournir par l'entreprise ; Contrôles et essais ; DOE) PUIS ## TRAVAUX PRÉPARATOIRES (Installation de chantier ; Implantation ; Sécurité et protections collectives ; Protection des existants ; Gestion et évacuation des déchets)",
-  };
+  const generalites = { label: "Généralités (référentiel FR + Maroc)", chapters: GENERALITES_CHAPTER };
+
   if (isGO) {
     return [
-      common,
+      generalites,
       {
-        label: "Terrassements & réseaux enterrés",
+        label: "Travaux préparatoires & terrassements",
         chapters:
-          "## TERRASSEMENTS (Décapage de la terre végétale ; Fouilles en rigoles, puits et pleine masse ; Plateformes et fonds de forme ; Évacuation des terres) PUIS ## RÉSEAUX ENTERRÉS (Eaux usées EU ; Eaux vannes EV ; Eaux pluviales EP ; Regards ; Tranchées et remblais)",
+          "## TRAVAUX PRÉPARATOIRES (### Installation de chantier ; ### Panneau de chantier et branchements provisoires ; ### Implantation par géomètre agréé ; ### Sécurité et protections collectives ; ### Protection des existants et avoisinants ; ### Gestion, tri et évacuation des déchets) " +
+          "PUIS ## TERRASSEMENTS (### Décapage de la terre végétale ; ### Fouilles en rigoles, puits et pleine masse ; ### Blindages et épuisements ; ### Plateformes et fonds de forme ; ### Remblais et évacuation des terres)",
       },
       {
-        label: "Gros œuvre",
+        label: "Réseaux enterrés, fondations & infrastructure",
         chapters:
-          "## GROS ŒUVRE en traitant TOUS les postes : Fondations ; Infrastructure ; Soubassements ; Voiles en béton armé ; Poteaux en béton armé ; Poutres en béton armé ; Dalles en béton armé ; Escaliers en béton armé ; Acrotères ; Bandeaux ; Réservations, incorporations et scellements ; Rebouchages et raccords ; Ouvrages divers",
+          "## RÉSEAUX ENTERRÉS (### Eaux usées EU ; ### Eaux vannes EV ; ### Eaux pluviales EP ; ### Regards et boîtes de branchement ; ### Tranchées, lit de pose et grillage avertisseur) " +
+          "PUIS ## FONDATIONS (### Béton de propreté ; ### Semelles isolées et filantes ; ### Radier le cas échéant ; ### Longrines — avec classes d'exposition XC/XA, dosages, enrobages) " +
+          "PUIS ## INFRASTRUCTURE ET SOUBASSEMENTS (### Voiles d'infrastructure ; ### Cuvelage / étanchéité enterrée ; ### Drainage périphérique)",
+      },
+      {
+        label: "Superstructure béton armé",
+        chapters:
+          "## SUPERSTRUCTURE EN BÉTON ARMÉ, poste par poste très détaillé : " +
+          "### Voiles en béton armé ; ### Poteaux en béton armé ; ### Poutres, chaînages et linteaux ; " +
+          "### Planchers et dalles (dalles pleines, dalles sur terre-plein, dalles de toiture-terrasse) ; ### Escaliers en béton armé. " +
+          "Pour chaque poste : béton (classe de résistance, dosage, adjuvants, classe d'exposition), aciers (nuance, enrobage, façonnage), coffrage (type, qualité de parement, tolérances), mise en œuvre, contrôles, tolérances, interfaces.",
+      },
+      {
+        label: "Maçonneries, ouvrages divers & réception",
+        chapters:
+          "## MAÇONNERIES (### Maçonnerie de remplissage en blocs/briques ; ### Chaînages et raidisseurs) " +
+          "PUIS ## ACROTÈRES ET BANDEAUX ## RÉSERVATIONS, INCORPORATIONS ET SCELLEMENTS ## REBOUCHAGES ET RACCORDS " +
+          "## OUVRAGES DIVERS (appuis, seuils, formes de pente, joints de dilatation/fractionnement) " +
+          "PUIS ## CONTRÔLES, ESSAIS ET RÉCEPTION DES OUVRAGES (épreuves et essais béton, tolérances générales d'exécution, réception des supports et des ouvrages, réserves).",
       },
     ];
   }
+
+  // Autres lots : 3 passes (généralités + 2 parties techniques) pour un volume conséquent.
   return [
-    common,
+    generalites,
     {
-      label: "Chapitres techniques du lot",
-      chapters: `Tous les chapitres et postes techniques propres au lot « ${lot} », organisés en parties ## et postes ###`,
+      label: "Prescriptions techniques — matériaux & fournitures",
+      chapters: `## PRESCRIPTIONS TECHNIQUES — MATÉRIAUX ET FOURNITURES du lot « ${lot} » : pour chaque famille d'ouvrage, un sous-titre ### détaillant la fourniture (matériaux, caractéristiques, classes, références normatives), avec exigences de qualité.`,
+    },
+    {
+      label: "Mise en œuvre, contrôles & réception",
+      chapters: `## MISE EN ŒUVRE, CONTRÔLES ET RÉCEPTION du lot « ${lot} » : pour chaque ouvrage (sous-titres ###) la mise en œuvre, les normes/DTU applicables, les contrôles et essais, les tolérances, les interfaces avec les autres lots, puis ## OUVRAGES DIVERS et ## RÉCEPTION DES OUVRAGES.`,
     },
   ];
 }
