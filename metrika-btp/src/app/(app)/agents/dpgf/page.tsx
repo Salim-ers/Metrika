@@ -111,6 +111,12 @@ export default function DpgfPage() {
   function removeLine(i: number) {
     setLines((arr) => arr.filter((_, j) => j !== i));
   }
+  function toggleAllValidated() {
+    setLines((arr) => {
+      const target = !(arr.length > 0 && arr.every((l) => l.validated));
+      return arr.map((l) => ({ ...l, validated: target }));
+    });
+  }
 
   async function exportDpgf(kind: "excel" | "docx" | "pdf") {
     try {
@@ -202,9 +208,14 @@ export default function DpgfPage() {
             <Card>
               <CardHeader className="flex-row items-center justify-between">
                 <CardTitle className="text-navy-900">Décomposition ({lines.length} lignes)</CardTitle>
-                <Badge variant={allValidated ? "success" : "warning"}>
-                  {lines.filter((l) => l.validated).length}/{lines.length} validées
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant={allValidated ? "success" : "warning"}>
+                    {lines.filter((l) => l.validated).length}/{lines.length} validées
+                  </Badge>
+                  <Button variant="outline" size="sm" onClick={toggleAllValidated}>
+                    <CheckCircle2 className="size-4" /> {allValidated ? "Tout dévalider" : "Tout valider"}
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="overflow-x-auto">
                 <table className="w-full text-sm">
