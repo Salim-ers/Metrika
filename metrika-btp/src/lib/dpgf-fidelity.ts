@@ -3,16 +3,17 @@
  * CÔTÉ CODE en plus des consignes de prompt : même si le modèle propose une
  * quantité non sourcée, on la neutralise et on marque la ligne « À métrer ».
  * Principe : FIABILITÉ > COMPLÉTUDE.
+ *
+ * Les statuts et leurs libellés viennent désormais du socle commun
+ * (src/lib/fidelity.ts) : un seul vocabulaire pour tous les agents.
  */
-export type DpgfStatus = "confirmed" | "to_measure" | "inferred" | "conflict" | "missing";
+import { STATUS_META, type DataStatus } from "@/lib/fidelity";
 
-export const DPGF_STATUS: Record<DpgfStatus, { label: string; variant: "success" | "warning" | "muted" | "gold" | "default" }> = {
-  confirmed: { label: "Confirmé", variant: "success" },
-  to_measure: { label: "À métrer", variant: "warning" },
-  inferred: { label: "Déduit (non contractuel)", variant: "gold" },
-  conflict: { label: "À arbitrer", variant: "default" },
-  missing: { label: "Manquant", variant: "muted" },
-};
+/** Statut d'une ligne DPGF — alias du vocabulaire commun de fiabilité. */
+export type DpgfStatus = DataStatus;
+
+/** Méta d'affichage des statuts (libellé + variante de badge) — partagé. */
+export const DPGF_STATUS = STATUS_META;
 
 export interface FidelityLine {
   lot?: string;

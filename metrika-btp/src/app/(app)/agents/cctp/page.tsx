@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { LOTS_BTP, PROJECT_TYPES } from "@/lib/constants";
+import { GENERATION_MODES, type GenerationMode } from "@/lib/fidelity";
 import { cn } from "@/lib/utils";
 import { PdfDropzone } from "@/components/ui/pdf-dropzone";
 import { getCompany } from "@/lib/client-data";
@@ -40,6 +41,7 @@ export default function CctpPage() {
   const [company, setCompany] = useState<Record<string, unknown> | null>(null);
   const [open, setOpen] = useState<Record<number, boolean>>({});
   const [deep, setDeep] = useState(true); // mode exhaustif (multi-passes) par défaut
+  const [mode, setMode] = useState<GenerationMode>("fidele"); // fidèle marché par défaut
   const [elapsed, setElapsed] = useState(0); // chronomètre (secondes)
   const [lastDuration, setLastDuration] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -127,7 +129,7 @@ export default function CctpPage() {
         let pi = 0;
         do {
           setPhase(`${lot} (${li + 1}/${selected.length})${pc > 1 ? ` — partie ${pi + 1}/${pc}` : deep ? ` — partie ${pi + 1}` : ""}…`);
-          const { ok, d } = await post({ lot, projectType, context, planContext: planCtx, deep, passIndex: pi });
+          const { ok, d } = await post({ lot, projectType, context, planContext: planCtx, deep, passIndex: pi, mode });
           if (typeof d?.passCount === "number" && d.passCount > 0) pc = d.passCount;
           if (pc === 0) pc = 1;
           if (ok && d?.content) parts.push(d.content as string);
@@ -265,6 +267,26 @@ export default function CctpPage() {
             <div className="space-y-2">
               <Label>Exigences particulières (optionnel)</Label>
               <Textarea value={context} onChange={(e) => setContext(e.target.value)} placeholder="Contraintes du projet, normes spécifiques, niveau de finition…" />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Mode de rédaction</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {(["fidele", "enrichi"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setMode(m)}
+                    className={cn(
+                      "rounded-lg border px-3 py-2 text-left text-xs transition-colors",
+                      mode === m ? "border-gold-500 bg-gold-50/60 ring-1 ring-gold-400" : "border-border bg-card hover:border-gold-300"
+                    )}
+                  >
+                    <span className="block font-semibold text-navy-800">{GENERATION_MODES[m].label}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">{GENERATION_MODES[mode].description}</p>
             </div>
 
             <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-muted/20 p-3 text-xs">

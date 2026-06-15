@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
 
   const body = await req.json();
-  const { analyze, planImages, lot, projectType, context, planContext, deep, passIndex } = body;
+  const { analyze, planImages, lot, projectType, context, planContext, deep, passIndex, mode } = body;
 
   try {
     // ── Mode analyse des plans ──
@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
         planContext,
         deep: !!deep,
         passIndex: Number(passIndex) || 0,
+        mode: mode === "enrichi" ? "enrichi" : "fidele",
       });
       return NextResponse.json(r);
     }

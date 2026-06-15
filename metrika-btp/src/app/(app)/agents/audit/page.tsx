@@ -17,11 +17,17 @@ interface Finding {
   ecart: string; gravite: "critique" | "majeur" | "moyen" | "mineur";
   action: string; sourcePage?: string; statut?: string;
 }
+interface Hypothese {
+  hypothese: string; raison?: string; sourcePartielle?: string; impact: string; validation?: string;
+}
 interface AuditResult {
   verdict: string;
-  scores: { fidelite: number; exploitabilite: number; risqueMarche: number };
+  noteSur10: number;
+  scores: { fidelite: number; exploitabilite: number; tracabilite: number; risqueMarche: number };
   findings: Finding[];
   correctionsPrioritaires?: string[];
+  hypotheses?: Hypothese[];
+  piecesManquantes?: string[];
 }
 
 const GRAVITE_CLASS: Record<string, string> = {
@@ -167,15 +173,19 @@ export default function AuditPage() {
             </Card>
           ) : (
             <>
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <ScoreCard label="Fidélité" value={result.scores.fidelite} />
                 <ScoreCard label="Exploitabilité" value={result.scores.exploitabilite} />
+                <ScoreCard label="Traçabilité" value={result.scores.tracabilite} />
                 <ScoreCard label="Risque marché" value={result.scores.risqueMarche} invert />
               </div>
 
               <Card>
                 <CardHeader className="flex-row items-center justify-between">
-                  <CardTitle className="text-navy-900">Verdict</CardTitle>
+                  <div className="flex items-center gap-3">
+                    <CardTitle className="text-navy-900">Verdict</CardTitle>
+                    <span className="rounded-full bg-navy-700 px-2.5 py-0.5 text-xs font-semibold text-white">{result.noteSur10}/10</span>
+                  </div>
                   <Button variant="outline" size="sm" onClick={exportPdf}><FileDown className="size-4" /> Rapport PDF</Button>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -229,6 +239,45 @@ export default function AuditPage() {
                   )}
                 </CardContent>
               </Card>
+
+              {result.hypotheses && result.hypotheses.length > 0 && (
+                <Card>
+                  <CardHeader><CardTitle className="text-navy-900">Registre des hypothèses ({result.hypotheses.length})</CardTitle></CardHeader>
+                  <CardContent className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left text-[11px] uppercase tracking-wider text-muted-foreground">
+                          <th className="pb-2 pr-2">Hypothèse</th>
+                          <th className="pb-2 px-2">Raison</th>
+                          <th className="pb-2 px-2">Impact possible</th>
+                          <th className="pb-2 pl-2">Validation</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {result.hypotheses.map((h, i) => (
+                          <tr key={i} className="border-b border-border/60 align-top">
+                            <td className="py-2 pr-2 text-navy-800">{h.hypothese}{h.sourcePartielle ? <span className="block text-[11px] text-muted-foreground">Source : {h.sourcePartielle}</span> : null}</td>
+                            <td className="px-2 py-2 text-navy-700">{h.raison || "—"}</td>
+                            <td className="px-2 py-2 text-muted-foreground">{h.impact}</td>
+                            <td className="pl-2 py-2 text-navy-700">{h.validation || "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </CardContent>
+                </Card>
+              )}
+
+              {result.piecesManquantes && result.piecesManquantes.length > 0 && (
+                <Card className="border-warning/40 bg-warning/5">
+                  <CardHeader><CardTitle className="text-navy-900">Pièces manquantes pour fiabiliser</CardTitle></CardHeader>
+                  <CardContent>
+                    <ul className="list-disc space-y-1 pl-5 text-sm text-navy-700">
+                      {result.piecesManquantes.map((p, i) => <li key={i}>{p}</li>)}
+                    </ul>
+                  </CardContent>
+                </Card>
+              )}
             </>
           )}
         </div>

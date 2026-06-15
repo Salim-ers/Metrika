@@ -1,5 +1,6 @@
 import { runClaude } from "@/lib/ai/client";
-import { CCTP_PROMPT, PLAN_ANALYSIS_PROMPT } from "@/lib/ai/prompts";
+import { CCTP_PROMPT, PLAN_ANALYSIS_PROMPT, cctpModeDirective } from "@/lib/ai/prompts";
+import type { GenerationMode } from "@/lib/fidelity";
 
 interface CctpSectionResult { lot: string; content: string }
 
@@ -49,11 +50,14 @@ export async function generateCctpSection(params: {
   projectType?: string;
   context?: string;
   planContext?: string;
+  mode?: GenerationMode;
 }): Promise<CctpSectionResult> {
   const user = `Lot demandé : ${params.lot}
 Type de projet : ${params.projectType ?? "non précisé"}
 Contexte / exigences particulières : ${params.context ?? "aucune"}
 ${params.planContext ? `\nSynthèse des plans du projet (à utiliser pour adapter les prescriptions) :\n${params.planContext}` : ""}
+
+${cctpModeDirective(params.mode ?? "fidele")}
 
 Rédige la section CCTP de ce lot, niveau économiste senior, intégrable directement à un DCE réel. Document COMPLET et DÉTAILLÉ : traite tous les postes du lot avec, pour chacun, fourniture / mise en œuvre / normes / contrôles / tolérances / interfaces. Aucune synthèse, aucun résumé.`;
 
@@ -128,11 +132,13 @@ function passesFor(lot: string): { label: string; chapters: string }[] {
   ];
 }
 
-function baseUser(params: { lot: string; projectType?: string; context?: string; planContext?: string }) {
+function baseUser(params: { lot: string; projectType?: string; context?: string; planContext?: string; mode?: GenerationMode }) {
   return `Lot demandé : ${params.lot}
 Type de projet : ${params.projectType ?? "non précisé"}
 Contexte / exigences particulières : ${params.context ?? "aucune"}
-${params.planContext ? `\nSynthèse des plans du projet (à utiliser pour adapter les prescriptions) :\n${params.planContext}` : ""}`;
+${params.planContext ? `\nSynthèse des plans du projet (à utiliser pour adapter les prescriptions) :\n${params.planContext}` : ""}
+
+${cctpModeDirective(params.mode ?? "fidele")}`;
 }
 
 /** Nombre de passes pour un lot (1 si non exhaustif). */
@@ -152,6 +158,7 @@ export async function generateCctpPass(params: {
   planContext?: string;
   deep?: boolean;
   passIndex: number;
+  mode?: GenerationMode;
 }): Promise<{ content: string; passCount: number; label: string }> {
   if (!params.deep) {
     const r = await generateCctpSection(params);

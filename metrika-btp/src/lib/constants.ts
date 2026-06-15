@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, FileStack, FileText, Table2, Calculator,
-  Library, ReceiptText, Settings, LayoutGrid, Languages, Users, ShieldCheck,
+  Library, ReceiptText, Settings, LayoutGrid, Languages, Users, ShieldCheck, GitCompare,
 } from "lucide-react";
 
 /** Lots BTP disponibles pour la génération de CCTP (multi-sélection). */
@@ -69,6 +69,7 @@ export const NAV = [
       { label: "DPGF", href: "/agents/dpgf", icon: Table2 },
       { label: "Sous-détail de prix", href: "/agents/sous-detail", icon: Calculator },
       { label: "Audit CCTP ↔ DPGF", href: "/agents/audit", icon: ShieldCheck },
+      { label: "Comparaison CCTP ↔ CCTP", href: "/agents/compare-cctp", icon: GitCompare },
     ],
   },
   {

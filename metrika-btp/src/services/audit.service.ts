@@ -14,14 +14,26 @@ export interface AuditFinding {
   statut?: string;
 }
 
+export interface AuditHypothese {
+  hypothese: string;
+  raison?: string;
+  sourcePartielle?: string;
+  impact: string;
+  validation?: string;
+}
+
 export interface AuditResult {
   verdict: string;
-  scores: { fidelite: number; exploitabilite: number; risqueMarche: number };
+  noteSur10: number;
+  scores: { fidelite: number; exploitabilite: number; tracabilite: number; risqueMarche: number };
   findings: AuditFinding[];
   correctionsPrioritaires?: string[];
+  hypotheses?: AuditHypothese[];
+  piecesManquantes?: string[];
 }
 
 const clampScore = (n: unknown) => Math.max(0, Math.min(100, Math.round(Number(n) || 0)));
+const clampNote = (n: unknown) => Math.max(0, Math.min(10, Math.round((Number(n) || 0) * 10) / 10));
 const GRAVITE_ORDER: Record<Gravite, number> = { critique: 0, majeur: 1, moyen: 2, mineur: 3 };
 
 /**
@@ -54,12 +66,16 @@ Compare le DPGF au CCTP selon la méthode. Liste les écarts sourcés, classe-le
 
   return {
     verdict: res.verdict ?? "",
+    noteSur10: clampNote(res.noteSur10),
     scores: {
       fidelite: clampScore(res.scores?.fidelite),
       exploitabilite: clampScore(res.scores?.exploitabilite),
+      tracabilite: clampScore(res.scores?.tracabilite),
       risqueMarche: clampScore(res.scores?.risqueMarche),
     },
     findings,
     correctionsPrioritaires: res.correctionsPrioritaires ?? [],
+    hypotheses: res.hypotheses ?? [],
+    piecesManquantes: res.piecesManquantes ?? [],
   };
 }
