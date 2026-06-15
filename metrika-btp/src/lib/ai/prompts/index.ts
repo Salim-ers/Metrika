@@ -165,6 +165,35 @@ UNITÉS AUTORISÉES : m², ml, m³, U, ens, kg, forfait — n'emploie que celles
 
 SORTIE : objet JSON structuré (outil) au format du schéma. En cas de doute sur une quantité : quantity = 0 et status = "to_measure".`;
 
+// ── Agent Audit / Comparaison CCTP ↔ DPGF ─────────────────────────
+export const AUDIT_PROMPT = `${BASE}
+
+${FIDELITY_RULES}
+
+RÔLE : Auditeur de pièces marché (économiste senior). Tu compares un CCTP et un DPGF/CDPGF et tu produis un rapport d'écarts FIABLE et SOURCÉ.
+
+MÉTHODE (ne conclus jamais « conforme » sans preuve sourcée) :
+- Chaque poste du DPGF est-il justifié par le CCTP (ou par des plans cités) ? Sinon « poste ajouté non justifié ».
+- Chaque ouvrage décrit au CCTP a-t-il une ligne DPGF correspondante ? Sinon « omission » (ouvrage sans ligne de prix).
+- Les UNITÉS sont-elles cohérentes entre CCTP et DPGF (pas de m²/m³/ml changé sans justification) ?
+- Les QUANTITÉS du DPGF sont-elles sourcées ? Une quantité non sourcée = écart (à métrer), jamais « conforme ».
+- Le niveau de détail du DPGF correspond-il au CCTP (pas d'agrégation abusive d'un poste détaillé) ?
+- Doublons / postes redondants.
+- Contradictions entre pièces → « à arbitrer », cite les deux.
+
+CLASSE chaque écart par gravité :
+- "critique" : rend le document faux ou non contractuel.
+- "majeur" : peut produire un DPGF faux / un risque marché.
+- "moyen" : perte de précision ou reformulation risquée.
+- "mineur" : différence de forme sans impact technique.
+
+SCORES (0 à 100, honnêtes et conservateurs) :
+- fidelite : fidélité du DPGF au CCTP/sources.
+- exploitabilite : exploitabilité en marché travaux (quantités sourcées, unités, détail).
+- risqueMarche : niveau de RISQUE (100 = risque maximal).
+
+SORTIE : objet JSON structuré (outil) conforme au schéma. Cite toujours la source/page quand disponible ; à défaut « non précisé dans les pièces ».`;
+
 // ── Agent Sous-détail de prix ─────────────────────────────────────
 export const SOUS_DETAIL_PROMPT = `${BASE}
 
@@ -309,9 +338,45 @@ export const PRICING_SCHEMA = {
   required: ["unitPrice", "marginRate", "generalFeesRate", "confidence"],
 } as const;
 
+export const AUDIT_SCHEMA = {
+  type: "object",
+  properties: {
+    verdict: { type: "string", description: "synthèse courte du verdict global" },
+    scores: {
+      type: "object",
+      properties: {
+        fidelite: { type: "number" },
+        exploitabilite: { type: "number" },
+        risqueMarche: { type: "number" },
+      },
+      required: ["fidelite", "exploitabilite", "risqueMarche"],
+    },
+    findings: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          refSource: { type: "string", description: "réf. chapitre/ligne source" },
+          elementSource: { type: "string", description: "élément du CCTP" },
+          elementGenere: { type: "string", description: "élément du DPGF (ou « absent »)" },
+          ecart: { type: "string", description: "écart constaté" },
+          gravite: { type: "string", enum: ["critique", "majeur", "moyen", "mineur"] },
+          action: { type: "string", description: "action corrective" },
+          sourcePage: { type: "string" },
+          statut: { type: "string", enum: ["absent_dpgf", "ajoute", "unite", "quantite", "reformule", "conflit", "doublon", "autre"] },
+        },
+        required: ["elementSource", "elementGenere", "ecart", "gravite", "action"],
+      },
+    },
+    correctionsPrioritaires: { type: "array", items: { type: "string" } },
+  },
+  required: ["verdict", "scores", "findings"],
+} as const;
+
 export const AGENT_PROMPTS = {
   CCTP: CCTP_PROMPT,
   DPGF: DPGF_PROMPT,
   SOUS_DETAIL: SOUS_DETAIL_PROMPT,
   PRICING: PRICING_PROMPT,
+  AUDIT: AUDIT_PROMPT,
 } as const;
