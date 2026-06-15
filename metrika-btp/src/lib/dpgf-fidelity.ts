@@ -24,28 +24,39 @@ export interface FidelityLine {
   status?: string;
   confidence?: string;
   sourceExcerpt?: string;
+  calculation?: string;
 }
 
 /** Sources qui justifient une quantité contractuelle. */
 const SOURCED = new Set(["dpgf", "cdpgf", "cctp", "plan", "plans", "metre", "métré", "metré"]);
-const VALID_STATUS = new Set<DpgfStatus>(["confirmed", "to_measure", "inferred", "conflict", "missing"]);
+const VALID_STATUS = new Set<DpgfStatus>(["confirmed", "calculated", "to_measure", "inferred", "conflict", "missing"]);
 
 function isSourced(src?: string): boolean {
   return !!src && SOURCED.has(src.trim().toLowerCase());
 }
 
 /**
- * Normalise une liste de lignes : toute quantité NON sourcée est ramenée à 0 et
- * la ligne passe en « to_measure ». Une quantité sourcée > 0 devient « confirmed »
- * (sauf statut explicite valide conservé, ex. "conflict").
+ * Normalise une liste de lignes (garde-fou anti-hallucination) :
+ * - quantité NON sourcée (ou absente) → 0 + « to_measure » (rien d'inventé ne passe) ;
+ * - statut « calculated » sans formule → invérifiable → « to_measure » ;
+ * - quantité sourcée > 0 → « confirmed » (ou statut explicite plus prudent conservé :
+ *   « calculated » avec formule, « inferred », « conflict »).
  */
 export function enforceSourcedQuantities<T extends FidelityLine>(lines: T[]): Array<T & { status: DpgfStatus }> {
   return lines.map((l) => {
     const sourced = isSourced(l.quantitySource);
     const explicit = l.status && VALID_STATUS.has(l.status as DpgfStatus) ? (l.status as DpgfStatus) : undefined;
     const qty = Number.isFinite(l.quantity) ? l.quantity : 0;
+    const hasCalc = !!l.calculation && l.calculation.trim().length > 0;
 
     if (explicit === "conflict") return { ...l, quantity: qty, status: "conflict" as DpgfStatus };
+
+    // Quantité calculée : la FORMULE est obligatoire (§8/§9). Sans formule, on
+    // ne peut pas la vérifier → on la neutralise.
+    if (explicit === "calculated") {
+      if (qty > 0 && hasCalc) return { ...l, quantity: qty, status: "calculated" as DpgfStatus };
+      return { ...l, quantity: 0, status: "to_measure" as DpgfStatus, quantitySource: sourced ? l.quantitySource : "none" };
+    }
 
     if (sourced && qty > 0) {
       return { ...l, quantity: qty, status: (explicit && explicit !== "to_measure" ? explicit : "confirmed") as DpgfStatus };

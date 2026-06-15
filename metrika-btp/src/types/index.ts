@@ -6,10 +6,11 @@ export interface DpgfLineInput {
   unit: string;
   quantity: number;
   // Traçabilité & fiabilité (anti-hallucination)
-  quantitySource?: string;   // dpgf | cctp | plan | metre | none
+  quantitySource?: string;   // cdpgf | dpgf | cctp | plan | metre | none
   sourceExcerpt?: string;    // court extrait justifiant la ligne
   confidence?: string;       // high | medium | low
-  status?: string;           // confirmed | to_measure | inferred | conflict | missing
+  status?: string;           // confirmed | calculated | to_measure | inferred | conflict | missing
+  calculation?: string;      // formule obligatoire si status = "calculated" (ex. « 65,60 × 10,30 »)
 }
 
 export interface SousDetailComponentInput {

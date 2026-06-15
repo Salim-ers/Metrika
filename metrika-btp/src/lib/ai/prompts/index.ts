@@ -203,14 +203,37 @@ MISSION :
 - Ne remplis JAMAIS le prix unitaire (il viendra de la bibliothèque de prix ou de la saisie).
 
 POUR CHAQUE LIGNE, renseigne la traçabilité :
-- quantitySource : "dpgf" | "cctp" | "plan" | "metre" | "none" (none si la quantité n'est pas sourcée).
-- sourceExcerpt : court extrait de la source qui justifie la ligne (≤ 160 caractères).
+- quantitySource : "cdpgf" | "dpgf" | "cctp" | "plan" | "metre" | "none" (none si la quantité n'est pas sourcée).
+- sourceExcerpt : court extrait EXACT de la source qui justifie la ligne (≤ 160 caractères) — pour une quantité, l'extrait DOIT contenir le nombre.
 - confidence : "high" | "medium" | "low".
-- status : "confirmed" (quantité sourcée) | "to_measure" (quantité absente, à métrer) | "inferred" (déduit, non contractuel) | "conflict" (contradiction entre sources).
+- status : "confirmed" (quantité présente telle quelle dans une source) | "calculated" (quantité calculée depuis des cotes sources — calculation OBLIGATOIRE) | "to_measure" (quantité absente, à métrer) | "inferred" (déduit, non contractuel) | "conflict" (contradiction entre sources).
+- calculation : si status = "calculated", la FORMULE et les valeurs utilisées (ex. « 65,60 × 10,30 = 675,68 »). Vide sinon.
 
 UNITÉS AUTORISÉES : m², ml, m³, U, ens, kg, forfait — n'emploie que celles cohérentes avec la source.
 
 SORTIE : objet JSON structuré (outil) au format du schéma. En cas de doute sur une quantité : quantity = 0 et status = "to_measure".`;
+
+/**
+ * Directive « structure maître » : un CDPGF/DPGF officiel est fourni. Il devient
+ * le cadre de référence et doit être reproduit À L'IDENTIQUE (hiérarchie niveau 1).
+ */
+export const CDPGF_MASTER_DIRECTIVE = `STRUCTURE MAÎTRE — UN CDPGF / DPGF OFFICIEL EST FOURNI (source de niveau 1) :
+- Le cadre officiel ci-dessous est la STRUCTURE MAÎTRE. Reproduis EXACTEMENT chaque ligne : lot / chapitre / sous-chapitre, numéro ou code, désignation et unité — à l'identique.
+- INTERDIT : reformuler, traduire, fusionner (agréger), éclater, réordonner, ajouter ou supprimer une ligne. Conserve la numérotation d'origine.
+- quantitySource = "cdpgf" pour chaque ligne reprise du cadre.
+- Quantité : reprends-la UNIQUEMENT si elle figure explicitement dans le cadre officiel. Si le cadre est à quantités vides → quantity = 0 et status = "to_measure".
+- N'ajoute AUCUN poste issu du seul CCTP : le cadre officiel prime. Le CCTP/plans ne servent qu'à SOURCER une quantité d'une ligne déjà présente dans le cadre.
+- Devise : si le cadre officiel l'indique, renvoie-la dans "detectedCurrency" ; sinon laisse vide (ne l'invente pas).
+- Renseigne aussi "officialStructure" : la liste EXACTE des lignes lues dans le cadre officiel ({code, designation, unit}), dans l'ordre, AVANT toute quantité. Elle servira à vérifier côté application que rien n'a été omis ni ajouté.`;
+
+/**
+ * Directive « DPGF provisoire » : aucun CDPGF officiel fourni. Le document
+ * produit est explicitement non contractuel.
+ */
+export const DPGF_PROVISIONAL_DIRECTIVE = `AUCUN CDPGF OFFICIEL FOURNI :
+- Tu produis un DPGF PROVISOIRE, NON CONTRACTUEL, à partir des pièces fournies.
+- Structure les postes fidèlement au CCTP et aux plans, sans prétendre reconstituer un cadre de prix officiel.
+- Quantités uniquement si calculables depuis des cotes de plans fiables ou présentes dans un métré fourni ; sinon quantity = 0 et status = "to_measure".`;
 
 // ── Agent Audit / Comparaison CCTP ↔ DPGF ─────────────────────────
 export const AUDIT_PROMPT = `${BASE}
@@ -393,6 +416,20 @@ export const CCTP_SCHEMA = {
 export const DPGF_SCHEMA = {
   type: "object",
   properties: {
+    detectedCurrency: { type: "string", description: "devise lisible dans le CDPGF officiel (ex. MAD, EUR) ; vide si non fournie/illisible" },
+    officialStructure: {
+      type: "array",
+      description: "lignes EXACTES lues dans le CDPGF officiel (mode structure maître) ; vide si aucun cadre officiel fourni",
+      items: {
+        type: "object",
+        properties: {
+          code: { type: "string" },
+          designation: { type: "string" },
+          unit: { type: "string" },
+        },
+        required: ["designation"],
+      },
+    },
     lines: {
       type: "array",
       items: {
@@ -404,10 +441,11 @@ export const DPGF_SCHEMA = {
           description: { type: "string" },
           unit: { type: "string", description: "m², ml, m³, U, ens, kg, forfait" },
           quantity: { type: "number", description: "0 si la quantité n'est pas sourcée (à métrer)" },
-          quantitySource: { type: "string", enum: ["dpgf", "cctp", "plan", "metre", "none"] },
-          sourceExcerpt: { type: "string", description: "court extrait de la source justifiant la ligne" },
+          quantitySource: { type: "string", enum: ["cdpgf", "dpgf", "cctp", "plan", "metre", "none"] },
+          sourceExcerpt: { type: "string", description: "court extrait de la source justifiant la ligne (contient le nombre pour une quantité)" },
           confidence: { type: "string", enum: ["high", "medium", "low"] },
-          status: { type: "string", enum: ["confirmed", "to_measure", "inferred", "conflict"] },
+          status: { type: "string", enum: ["confirmed", "calculated", "to_measure", "inferred", "conflict"] },
+          calculation: { type: "string", description: "formule obligatoire si status = calculated (ex. « 65,60 × 10,30 = 675,68 »)" },
         },
         required: ["lot", "designation", "unit", "quantity", "quantitySource", "status"],
       },

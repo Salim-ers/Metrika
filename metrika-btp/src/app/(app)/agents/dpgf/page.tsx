@@ -21,8 +21,11 @@ import { Loader2, Table2, CheckCircle2, FileDown, Sparkles, FileText, X, Plus, T
 interface Line {
   lot: string; code?: string; designation: string; description?: string;
   unit: string; quantity: number; unitPrice: number; quantitySource?: string; validated: boolean;
-  status?: string; confidence?: string; sourceExcerpt?: string;
+  status?: string; confidence?: string; sourceExcerpt?: string; calculation?: string;
 }
+
+interface StructureLine { code?: string; designation: string }
+interface StructureDiff { missing: StructureLine[]; extra: StructureLine[] }
 
 /** Statut de fiabilité affiché : explicite, sinon dérivé de la quantité. */
 const lineStatus = (l: { status?: string; quantity: number }): string => l.status || (l.quantity > 0 ? "confirmed" : "to_measure");
@@ -44,12 +47,17 @@ export default function DpgfPage() {
   const [cctpText, setCctpText] = useState("");
   const [planNotes, setPlanNotes] = useState("");
   const [cctpFiles, setCctpFiles] = useState<File[]>([]);
+  const [cdpgfFiles, setCdpgfFiles] = useState<File[]>([]);
+  const [cdpgfText, setCdpgfText] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState("");
   const [company, setCompany] = useState<Record<string, unknown> | null>(null);
   const [prices, setPrices] = useState<PriceItem[]>([]);
   const [tab, setTab] = useState<"dpgf" | "cdpgf">("dpgf");
+  const [provisional, setProvisional] = useState<boolean | null>(null); // null = saisie manuelle (traité comme provisoire/non contractuel)
+  const [detectedCurrency, setDetectedCurrency] = useState("");
+  const [structureDiff, setStructureDiff] = useState<StructureDiff | null>(null);
 
   useEffect(() => {
     getCompany().then(setCompany);
@@ -88,8 +96,8 @@ export default function DpgfPage() {
   }, [currency, rate]);
 
   async function convert() {
-    if (!cctpText.trim() && cctpFiles.length === 0) {
-      toast.error("Ajoutez le CCTP : un PDF ou du texte collé.");
+    if (!cctpText.trim() && cctpFiles.length === 0 && !cdpgfText.trim() && cdpgfFiles.length === 0) {
+      toast.error("Ajoutez le CCTP (ou un CDPGF officiel) : un PDF ou du texte collé.");
       return;
     }
     setBusy(true);
@@ -119,22 +127,45 @@ export default function DpgfPage() {
         }
       }
 
+      // CDPGF officiel (structure maître) : extraction texte (un bordereau est
+      // quasi toujours textuel ; sinon l'utilisateur colle le texte).
+      let cdpgfExtracted = "";
+      if (cdpgfFiles.length > 0) {
+        setPhase("Lecture du CDPGF officiel…");
+        const { extractPdfText } = await import("@/lib/pdf-render");
+        for (const f of cdpgfFiles) {
+          const t = await extractPdfText(f).catch(() => "");
+          if (t && t.trim().length > 100) cdpgfExtracted += `\n\n===== ${f.name} =====\n${t}`;
+          else toast.warning(`CDPGF « ${f.name} » illisible (PDF scanné/protégé ?). Collez le texte du cadre pour l'utiliser comme structure maître.`);
+        }
+      }
+      const officialCdpgf = [cdpgfText, cdpgfExtracted].filter((s) => s && s.trim()).join("\n\n");
+
       const fullText = [cctpText, extractedText].filter((s) => s && s.trim()).join("\n\n");
-      if (!fullText.trim() && cctpImages.length === 0) {
-        toast.error("CCTP illisible ou vide. Collez le texte du CCTP à la place.");
+      if (!fullText.trim() && cctpImages.length === 0 && !officialCdpgf.trim()) {
+        toast.error("CCTP/CDPGF illisible ou vide. Collez le texte à la place.");
         setBusy(false); setPhase(""); return;
       }
 
       setPhase("Analyse…");
       const res = await fetch("/api/dpgf/convert", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cctpText: fullText, planNotes, cctpImages }),
+        body: JSON.stringify({ cctpText: fullText, planNotes, officialCdpgf, cctpImages }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setLines(data.lines.map((l: Line) => ({ ...l, unitPrice: 0, validated: false })));
-      const toMeasure = (data.lines as Line[]).filter((l) => lineStatus(l) === "to_measure").length;
-      toast.success(`${data.lines.length} ouvrage(s) extraits — ${toMeasure} « À métrer » (quantité non sourcée).`);
+      const got = (data.lines ?? []) as Line[];
+      setLines(got.map((l) => ({ ...l, unitPrice: 0, validated: false })));
+      setProvisional(typeof data.provisional === "boolean" ? data.provisional : !officialCdpgf.trim());
+      setDetectedCurrency(typeof data.currency === "string" ? data.currency : "");
+      setStructureDiff(data.structureDiff && (data.structureDiff.missing?.length || data.structureDiff.extra?.length) ? data.structureDiff : null);
+      // Rapport de fiabilité synthétique (visible, pas seulement au survol).
+      const confirmed = got.filter((l) => lineStatus(l) === "confirmed" || lineStatus(l) === "calculated").length;
+      const toMeasure = got.filter((l) => lineStatus(l) === "to_measure").length;
+      const conflicts = got.filter((l) => lineStatus(l) === "conflict").length;
+      toast.success(
+        `${got.length} ouvrage(s) ${officialCdpgf.trim() ? "repris du CDPGF officiel" : "extraits"} — ${confirmed} sourcé(s), ${toMeasure} « À métrer »${conflicts ? `, ${conflicts} à arbitrer` : ""}.`,
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erreur");
     } finally { setBusy(false); setPhase(""); }
@@ -161,10 +192,11 @@ export default function DpgfPage() {
       const fresh = await getCompany(true); // logo/cachet toujours à jour
       setCompany(fresh);
       const payload = { ...(fresh as object), currency } as never;
+      const isProvisional = provisional !== false;
       const m = await import("@/lib/export-dpgf");
-      if (kind === "excel") await m.exportDpgfExcel(lines, payload);
-      else if (kind === "docx") await m.exportDpgfDocx(lines, payload);
-      else await m.exportDpgfPdf(lines, payload);
+      if (kind === "excel") await m.exportDpgfExcel(lines, payload, isProvisional);
+      else if (kind === "docx") await m.exportDpgfDocx(lines, payload, isProvisional);
+      else await m.exportDpgfPdf(lines, payload, vatRate, { provisional: isProvisional });
       toast.success("Export généré.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Export impossible");
@@ -175,7 +207,7 @@ export default function DpgfPage() {
   async function buildDpgfBytes() {
     const fresh = await getCompany(true);
     const m = await import("@/lib/export-dpgf");
-    return m.exportDpgfPdf(lines, { ...(fresh as object), currency } as never, 20, { download: false });
+    return m.exportDpgfPdf(lines, { ...(fresh as object), currency } as never, vatRate, { download: false, provisional: provisional !== false });
   }
 
   const total = lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
@@ -225,6 +257,33 @@ export default function DpgfPage() {
               <Label>Dimensions / plans (optionnel)</Label>
               <Textarea value={planNotes} onChange={(e) => setPlanNotes(e.target.value)} placeholder="Surfaces, longueurs, volumes connus…" />
             </div>
+
+            <div className="space-y-2 rounded-lg border border-navy-100 bg-navy-50/30 p-3">
+              <Label className="flex items-center gap-1.5 text-navy-800">
+                <Library className="size-3.5 text-navy-600" /> CDPGF / DPGF officiel (optionnel)
+              </Label>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                S’il est fourni, son cadre devient la <strong>structure maître</strong> : postes, numéros et unités repris à l’identique. Sinon, le DPGF généré est <strong>provisoire (non contractuel)</strong>.
+              </p>
+              <PdfDropzone
+                title="Glissez le CDPGF officiel (PDF) ici"
+                hint="Cadre repris à l’identique"
+                onFiles={(list) => setCdpgfFiles((p) => [...p, ...list])}
+              />
+              {cdpgfFiles.length > 0 && (
+                <ul className="space-y-1.5">
+                  {cdpgfFiles.map((f, i) => (
+                    <li key={i} className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs">
+                      <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="flex-1 truncate text-navy-800">{f.name}</span>
+                      <button onClick={() => setCdpgfFiles((p) => p.filter((_, j) => j !== i))} className="text-destructive hover:opacity-70"><X className="size-3.5" /></button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <Textarea value={cdpgfText} onChange={(e) => setCdpgfText(e.target.value)} className="min-h-[80px] text-xs" placeholder="…ou collez le cadre du CDPGF officiel" />
+            </div>
+
             <Button variant="gold" size="lg" className="w-full" disabled={busy} onClick={convert}>
               {busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
               {busy ? (phase || "Analyse…") : "Convertir en DPGF"}
@@ -280,6 +339,28 @@ export default function DpgfPage() {
                 </p>
               </CardHeader>
               <CardContent className="overflow-x-auto">
+                {provisional === false ? (
+                  <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-success/40 bg-success/5 px-3 py-2 text-xs text-navy-800">
+                    <CheckCircle2 className="size-4 shrink-0 text-success" />
+                    <span><strong>Structure officielle CDPGF appliquée</strong> — postes, numéros et unités repris à l’identique. Devise : {detectedCurrency ? <strong>{detectedCurrency}</strong> : <strong className="text-warning-foreground">à confirmer</strong>}.</span>
+                  </div>
+                ) : (
+                  <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-navy-800">
+                    <Table2 className="size-4 shrink-0 text-warning-foreground" />
+                    <span><strong>DPGF provisoire</strong> généré à partir des pièces fournies — <strong>non contractuel</strong>. Fournissez un CDPGF officiel pour figer le cadre.{detectedCurrency ? ` Devise : ${detectedCurrency}.` : ""}</span>
+                  </div>
+                )}
+                {structureDiff && (
+                  <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-navy-800">
+                    <p className="flex items-center gap-1.5 font-semibold text-destructive"><X className="size-3.5" /> Écart avec le cadre officiel — à vérifier</p>
+                    {structureDiff.missing.length > 0 && (
+                      <p className="mt-1">{structureDiff.missing.length} poste(s) du CDPGF officiel <strong>absent(s)</strong> du DPGF : {structureDiff.missing.slice(0, 6).map((m) => m.designation).join(" · ")}{structureDiff.missing.length > 6 ? "…" : ""}</p>
+                    )}
+                    {structureDiff.extra.length > 0 && (
+                      <p className="mt-1">{structureDiff.extra.length} ligne(s) <strong>hors cadre</strong> (ajoutées) : {structureDiff.extra.slice(0, 6).map((m) => m.designation).join(" · ")}{structureDiff.extra.length > 6 ? "…" : ""}</p>
+                    )}
+                  </div>
+                )}
                 {tab === "cdpgf" && (
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-gold-200 bg-gold-50/40 px-3 py-2 text-xs">
                     <span className="flex items-center gap-1.5 text-navy-800">

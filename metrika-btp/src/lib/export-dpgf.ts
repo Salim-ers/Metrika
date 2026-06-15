@@ -2,6 +2,7 @@
 
 import { CompanyExport, fmtMad, moneyUnit } from "@/lib/export-common";
 import { createPdf } from "@/lib/pdf-kit";
+import { STATUS_META, isValidStatus, NOT_FOUND_LABELS } from "@/lib/fidelity";
 
 export interface DpgfExportLine {
   lot: string;
@@ -12,7 +13,17 @@ export interface DpgfExportLine {
   quantity: number;
   unitPrice: number;
   quantitySource?: string;
+  status?: string;
+  confidence?: string;
+  sourceExcerpt?: string;
+  calculation?: string;
 }
+
+/** Libellé court de statut pour l'export (traçabilité §8). */
+const statusLabel = (s?: string): string => (isValidStatus(s) ? STATUS_META[s].label : "—");
+/** Prix : « À renseigner » tant qu'aucun P.U. n'est saisi (jamais 0 trompeur). */
+const priceCell = (p: number): string => (p > 0 ? fmtMad(p) : NOT_FOUND_LABELS.price);
+const amountCell = (q: number, p: number): string => (p > 0 ? fmtMad(q * p) : "—");
 
 function download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
@@ -26,7 +37,7 @@ function download(blob: Blob, name: string) {
 const fmt = (n: number) => fmtMad(n);
 
 // ── Excel ─────────────────────────────────────────────────────────
-export async function exportDpgfExcel(lines: DpgfExportLine[], company?: CompanyExport | null) {
+export async function exportDpgfExcel(lines: DpgfExportLine[], company?: CompanyExport | null, provisional = true) {
   const unit = moneyUnit(company);
   const mod = await import("exceljs");
   const ExcelJS = (mod as unknown as { default?: typeof mod }).default ?? mod;
@@ -35,11 +46,15 @@ export async function exportDpgfExcel(lines: DpgfExportLine[], company?: Company
   ws.columns = [
     { header: "Lot", key: "lot", width: 22 },
     { header: "Code", key: "code", width: 8 },
-    { header: "Désignation", key: "designation", width: 50 },
+    { header: "Désignation", key: "designation", width: 46 },
     { header: "Unité", key: "unit", width: 8 },
-    { header: "Quantité", key: "quantity", width: 12 },
-    { header: `P.U. (${unit})`, key: "unitPrice", width: 14 },
-    { header: `Total HT (${unit})`, key: "total", width: 16 },
+    { header: "Quantité", key: "quantity", width: 11 },
+    { header: `P.U. (${unit})`, key: "unitPrice", width: 13 },
+    { header: `Total HT (${unit})`, key: "total", width: 15 },
+    { header: "Source", key: "source", width: 12 },
+    { header: "Statut", key: "status", width: 14 },
+    { header: "Conf.", key: "confidence", width: 8 },
+    { header: "Commentaire", key: "comment", width: 34 },
   ];
   ws.getRow(1).font = { bold: true };
   ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF14233F" } };
@@ -47,12 +62,21 @@ export async function exportDpgfExcel(lines: DpgfExportLine[], company?: Company
   for (const l of lines) {
     ws.addRow({
       lot: l.lot, code: l.code ?? "", designation: l.designation, unit: l.unit,
-      quantity: l.quantity, unitPrice: l.unitPrice, total: l.quantity * l.unitPrice,
+      quantity: l.quantity, unitPrice: l.unitPrice > 0 ? l.unitPrice : NOT_FOUND_LABELS.price,
+      total: l.unitPrice > 0 ? l.quantity * l.unitPrice : "—",
+      source: l.quantitySource ?? "", status: statusLabel(l.status), confidence: l.confidence ?? "",
+      comment: l.calculation || l.sourceExcerpt || l.description || "",
     });
   }
   const totalHT = lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
   const r = ws.addRow({ designation: "TOTAL HT", total: totalHT });
   r.font = { bold: true };
+  const note = ws.addRow({
+    designation: provisional
+      ? "DPGF provisoire généré à partir des pièces fournies — non contractuel."
+      : "Structure conforme au CDPGF officiel fourni (cadre repris à l'identique).",
+  });
+  note.font = { italic: true, color: { argb: "FF888888" } };
   const buf = await wb.xlsx.writeBuffer();
   download(
     new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
@@ -61,24 +85,25 @@ export async function exportDpgfExcel(lines: DpgfExportLine[], company?: Company
 }
 
 // ── DOCX ──────────────────────────────────────────────────────────
-export async function exportDpgfDocx(lines: DpgfExportLine[], company?: CompanyExport | null) {
+export async function exportDpgfDocx(lines: DpgfExportLine[], company?: CompanyExport | null, provisional = true) {
   const unit = moneyUnit(company);
   const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, HeadingLevel, AlignmentType } =
     await import("docx");
-  const header = ["Lot", "Désignation", "U.", "Qté", "P.U.", "Total HT"];
+  const header = ["Lot", "Désignation", "U.", "Qté", "P.U.", "Total HT", "Source", "Statut"];
   const cell = (t: string, bold = false, align: "left" | "right" = "left") =>
     new TableCell({
       children: [new Paragraph({ alignment: align === "right" ? AlignmentType.RIGHT : AlignmentType.LEFT, children: [new TextRun({ text: t, bold })] })],
     });
   const rows = [
-    new TableRow({ children: header.map((h, i) => cell(h, true, i >= 3 ? "right" : "left")) }),
+    new TableRow({ children: header.map((h, i) => cell(h, true, i >= 3 && i <= 5 ? "right" : "left")) }),
     ...lines.map((l) =>
       new TableRow({
         children: [
           cell(l.lot), cell(l.designation), cell(l.unit),
           cell(String(l.quantity), false, "right"),
-          cell(fmt(l.unitPrice), false, "right"),
-          cell(fmt(l.quantity * l.unitPrice), false, "right"),
+          cell(priceCell(l.unitPrice), false, "right"),
+          cell(amountCell(l.quantity, l.unitPrice), false, "right"),
+          cell(l.quantitySource ?? "—"), cell(statusLabel(l.status)),
         ],
       })
     ),
@@ -89,6 +114,12 @@ export async function exportDpgfDocx(lines: DpgfExportLine[], company?: CompanyE
       children: [
         new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("DPGF — Décomposition du Prix Global et Forfaitaire")] }),
         new Paragraph({ children: [new TextRun({ text: "Metrika Métrage BTP", color: "888888" })] }),
+        new Paragraph({ children: [new TextRun({
+          text: provisional
+            ? "DPGF provisoire généré à partir des pièces fournies — non contractuel."
+            : "Structure conforme au CDPGF officiel fourni (cadre repris à l'identique).",
+          italics: true, color: "888888",
+        })] }),
         new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows }),
         new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: `Total HT : ${fmt(totalHT)} ${unit}`, bold: true })] }),
       ],
@@ -98,11 +129,21 @@ export async function exportDpgfDocx(lines: DpgfExportLine[], company?: CompanyE
 }
 
 // ── PDF officiel (kit Metrika) ────────────────────────────────────
-export async function exportDpgfPdf(lines: DpgfExportLine[], company?: CompanyExport | null, vatRate = 20, opts?: { download?: boolean }): Promise<Uint8Array> {
+export async function exportDpgfPdf(lines: DpgfExportLine[], company?: CompanyExport | null, vatRate = 20, opts?: { download?: boolean; provisional?: boolean }): Promise<Uint8Array> {
   const k = await createPdf(company);
   const { C, W, M } = k;
   const unit = moneyUnit(company);
   k.header({ title: "DPGF", subtitle: "Décomposition du Prix Global et Forfaitaire" });
+
+  // Mention de fiabilité : provisoire (non contractuel) vs cadre officiel.
+  if (opts?.provisional !== false) {
+    k.page.drawRectangle({ x: M, y: k.y - 15, width: W - 2 * M, height: 17, color: C.ZEBRA });
+    k.text("DPGF PROVISOIRE généré à partir des pièces fournies — NON CONTRACTUEL.", M + 6, k.y - 10, { size: 7.5, bold: true, color: C.GREY });
+    k.y -= 24;
+  } else {
+    k.text("Structure conforme au CDPGF officiel fourni (cadre repris à l'identique).", M, k.y - 8, { size: 7.5, bold: true, color: C.GREY });
+    k.y -= 18;
+  }
 
   // Regroupement par lot (ordre d'apparition).
   const groups: { lot: string; items: DpgfExportLine[] }[] = [];
@@ -152,8 +193,14 @@ export async function exportDpgfPdf(lines: DpgfExportLine[], company?: CompanyEx
       const amt = l.quantity * l.unitPrice;
       sub += amt; totalHT += amt;
       const wl = k.wrap(l.designation, 8.5, true, desigW);
-      const srcH = l.quantitySource ? 9 : 0;
-      const rowH = Math.max(22, wl.length * 11 + 10 + srcH);
+      // Ligne de traçabilité (source · statut · formule) sous la désignation.
+      const metaParts: string[] = [];
+      if (l.quantitySource) metaParts.push(`source : ${l.quantitySource}`);
+      const st = statusLabel(l.status);
+      if (st !== "—") metaParts.push(st);
+      if (l.calculation) metaParts.push(`calcul : ${l.calculation}`);
+      const metaLines = metaParts.length ? k.wrap(metaParts.join("  ·  "), 6.5, false, desigW) : [];
+      const rowH = Math.max(22, wl.length * 11 + 10 + metaLines.length * 8);
       if (k.ensure(rowH)) { head(); zebra = false; }
       const top = k.y;
       // Bande zébrée (alternée) en guise de séparation — pas de trait qui barre le texte.
@@ -162,11 +209,11 @@ export async function exportDpgfPdf(lines: DpgfExportLine[], company?: CompanyEx
       const base = top - 13; // baseline de la 1ʳᵉ ligne, alignée pour toutes les colonnes
       k.text(String(n), nX, base, { size: 8, color: C.GREY });
       wl.forEach((ln, i) => k.text(ln, desigX, base - i * 11, { size: 8.5, bold: i === 0, color: C.NAVY }));
-      if (l.quantitySource) k.text(`source : ${l.quantitySource}`, desigX, base - wl.length * 11 + 1, { size: 6.5, color: C.GREY });
+      metaLines.forEach((ln, i) => k.text(ln, desigX, base - wl.length * 11 + 1 - i * 8, { size: 6.5, color: C.GREY }));
       k.text(l.unit, uX, base, { size: 8, color: C.GREY });
       k.text(String(l.quantity), qtyR, base, { size: 8, align: "right", color: C.NAVY });
-      k.text(fmt(l.unitPrice), puR, base, { size: 8, align: "right", color: C.NAVY });
-      k.text(fmt(amt), totR, base, { size: 8, bold: true, align: "right", color: C.NAVY });
+      k.text(priceCell(l.unitPrice), puR, base, { size: 8, align: "right", color: l.unitPrice > 0 ? C.NAVY : C.GREY });
+      k.text(amountCell(l.quantity, l.unitPrice), totR, base, { size: 8, bold: true, align: "right", color: C.NAVY });
       k.y = top - rowH;
     }
     // Sous-total du lot (bloc à droite, sans trait traversant)

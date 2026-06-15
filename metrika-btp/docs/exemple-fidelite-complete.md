@@ -30,10 +30,20 @@ Pièce **absente** : CDPGF officiel, plan VRD.
 
 ---
 
-## 2. DPGF — extrait (mode fidèle, sans CDPGF officiel)
+## 2. DPGF — deux modes (§8)
 
-> Bandeau document : **« DPGF provisoire généré à partir des pièces fournies —
-> non contractuel »** (aucun CDPGF officiel fourni).
+**Mode structure maître** — si un **CDPGF/DPGF officiel** est fourni, son cadre
+devient la référence : lots, numéros, désignations et unités repris **à
+l'identique** (ni agrégation, ni éclatement, ni ajout). L'application recompare
+le cadre lu au DPGF produit et **signale toute ligne omise ou hors cadre**
+(`structureDiff`). Les quantités ne sont renseignées que si elles figurent dans
+le cadre officiel ; sinon « À métrer ». La devise est celle du cadre, sinon
+« À confirmer ».
+
+**Mode provisoire** — sans CDPGF officiel, bandeau **« DPGF provisoire généré à
+partir des pièces fournies — non contractuel »** (écran + exports PDF/Excel/DOCX).
+
+> Extrait ci-dessous : mode provisoire (aucun CDPGF officiel fourni).
 
 | N° | Désignation | U | Qté | P.U. | Source | Statut | Conf. | Commentaire |
 |---|---|---|---|---|---|---|---|---|

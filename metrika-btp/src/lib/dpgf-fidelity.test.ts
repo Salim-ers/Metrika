@@ -42,6 +42,29 @@ describe("enforceSourcedQuantities (anti-hallucination)", () => {
     expect(out[0].status).toBe("conflict");
   });
 
+  it("quantité « calculated » AVEC formule → conservée", () => {
+    const out = enforceSourcedQuantities([
+      { designation: "Dallage", unit: "m²", quantity: 675.68, quantitySource: "plan", status: "calculated", calculation: "65,60 × 10,30" },
+    ]);
+    expect(out[0].status).toBe("calculated");
+    expect(out[0].quantity).toBe(675.68);
+  });
+
+  it("quantité « calculated » SANS formule → neutralisée (À métrer)", () => {
+    const out = enforceSourcedQuantities([
+      { designation: "Dallage", unit: "m²", quantity: 675.68, quantitySource: "plan", status: "calculated" },
+    ]);
+    expect(out[0].status).toBe("to_measure");
+    expect(out[0].quantity).toBe(0);
+  });
+
+  it("quantité sourcée CDPGF officiel > 0 → confirmée", () => {
+    const out = enforceSourcedQuantities([
+      { designation: "Béton C25/30", unit: "m³", quantity: 42, quantitySource: "cdpgf" },
+    ]);
+    expect(out[0].status).toBe("confirmed");
+  });
+
   it("garantit qu'aucune quantité inventée ne subsiste (noInvented)", () => {
     const lines: FidelityLine[] = [
       { designation: "A", unit: "m²", quantity: 100, quantitySource: "none" },
