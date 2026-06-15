@@ -42,13 +42,19 @@ async function createSchema() {
 async function seed() {
   const email = process.env.ADMIN_EMAIL ?? "admin@metrika.ma";
   const password = process.env.ADMIN_PASSWORD ?? "MetrikaMaroc2026!";
-  const passwordHash = await bcrypt.hash(password, 10);
 
-  await prisma.user.upsert({
-    where: { email },
-    update: { passwordHash },
-    create: { email, name: "Administrateur Metrika", passwordHash, role: "ADMIN" },
-  });
+  // Le hachage bcrypt (~100 ms CPU) ne doit PAS être payé à chaque démarrage
+  // d'instance : on (re)synchronise le mot de passe seulement si l'admin est
+  // absent, ou si RESEED_ADMIN=1 est explicitement demandé (changement de MDP).
+  const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+  if (!existing || process.env.RESEED_ADMIN === "1") {
+    const passwordHash = await bcrypt.hash(password, 10);
+    await prisma.user.upsert({
+      where: { email },
+      update: { passwordHash },
+      create: { email, name: "Administrateur Metrika", passwordHash, role: "ADMIN" },
+    });
+  }
 
   if (!(await prisma.company.findFirst())) {
     await prisma.company.create({

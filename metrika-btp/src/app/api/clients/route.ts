@@ -23,7 +23,6 @@ function clean(body: Record<string, unknown>) {
 export async function GET() {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  await ensureDb();
   const clients = await prisma.client.findMany({
     orderBy: { createdAt: "desc" },
     include: { _count: { select: { documents: true, projects: true, quotes: true } } },

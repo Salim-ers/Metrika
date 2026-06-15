@@ -13,7 +13,6 @@ const MAX_DATAURL_CHARS = 9_000_000;
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  await ensureDb();
   const docId = req.nextUrl.searchParams.get("docId");
   if (!docId) return NextResponse.json({ error: "docId requis." }, { status: 400 });
   const { id } = await params;

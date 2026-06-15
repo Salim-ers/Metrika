@@ -23,7 +23,6 @@ function clean(body: Record<string, unknown>) {
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  await ensureDb();
   const { id } = await params;
   const client = await prisma.client.findUnique({
     where: { id },

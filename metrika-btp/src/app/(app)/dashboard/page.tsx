@@ -9,7 +9,9 @@ import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 
-export const dynamic = "force-dynamic";
+// ISR : page mise en cache et régénérée en arrière-plan → rafraîchissement
+// quasi instantané (au lieu d'interroger la base à chaque visite).
+export const revalidate = 60;
 
 const ACTIONS = [
   { href: "/clients", label: "Nouveau client", primary: true },
