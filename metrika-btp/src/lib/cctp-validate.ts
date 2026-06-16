@@ -3,13 +3,16 @@
  *
  * Le CCTP est produit en Markdown (texte long) — la sortie structurée tronquait
  * sur les longs documents. On ne peut donc pas typer chaque ligne ; on SCANNE le
- * texte produit pour faire respecter mécaniquement :
- *  - R3 : tout tag [SOURCE PLAN …] doit être DÉTAILLÉ (fichier — page — nom — cote — confiance) ;
- *  - corps contractuel sans placeholder (TEST, à compléter…) ;
- *  - R5/R6 : en mode enrichi, une norme ABSENTE du CCTP officiel doit porter un tag complément.
+ * texte produit pour SIGNALER (sans bloquer) :
+ *  - R3 : un tag [SOURCE PLAN …] insuffisamment localisé ;
+ *  - un placeholder résiduel dans le corps ;
+ *  - R5/R6 : en mode enrichi, une norme ABSENTE du CCTP officiel non taguée complément.
  *
- * Les écarts « blocking » désactivent l'export tant qu'ils ne sont pas levés
- * (les sections sont éditables → l'utilisateur corrige le texte).
+ * IMPORTANT — ces contrôles sont des ALERTES, jamais bloquantes : le texte libre
+ * d'un CCTP est trop variable pour un blocage mécanique fiable (faux positifs =
+ * impasse d'export). Le vrai garde-fou du CCTP est la VALIDATION HUMAINE par
+ * section + le PRÉ-AUDIT. Le blocage dur reste réservé aux données STRUCTURÉES
+ * (lignes DPGF, rôles d'intervenants).
  */
 export type CctpIssueCode = "plan_tag_incomplete" | "placeholder" | "norm_added_untagged";
 
@@ -20,10 +23,12 @@ export interface CctpIssue {
   excerpt?: string;
 }
 
-// Tag plan ouvert mais éventuellement incomplet.
+// Tag plan ouvert mais éventuellement peu détaillé.
 const PLAN_TAG_OPEN = /\[SOURCE PLAN/i;
-// Tag plan DÉTAILLÉ : [SOURCE PLAN — a — b — c — d — e] (5 tirets cadratins « — »).
-const PLAN_TAG_DETAILED = /\[SOURCE PLAN(?:\s*—[^—\]]*){5}\]/i;
+// Tag plan suffisamment LOCALISÉ : au moins 3 champs après « SOURCE PLAN »
+// (ex. fichier — page — nom). La « cote » exacte n'existe pas toujours sur le
+// plan ; on n'exige donc pas les 6 champs (sinon faux positifs systématiques).
+const PLAN_TAG_DETAILED = /\[SOURCE PLAN(?:\s*—[^—\]]*){3,}\]/i;
 // Placeholders interdits dans le corps (« exemple » exclu : trop fréquent en prose FR).
 const PLACEHOLDER_BODY = /(?:^|[^\p{L}])(test|lorem ipsum|à compléter|a completer|placeholder|tbd|à remplir|a remplir|xxx+)(?:[^\p{L}]|$)/iu;
 // Normes / références réglementaires.
@@ -49,19 +54,19 @@ export function validateCctpContent(text: string, opts?: { mode?: "fidele" | "en
     const line = raw.trim();
     if (!line || isHeading(line)) continue;
 
-    // R3 — tag plan détaillé obligatoire.
+    // R3 — tag plan peu localisé (alerte, non bloquant).
     if (PLAN_TAG_OPEN.test(line) && !PLAN_TAG_DETAILED.test(line)) {
       issues.push({
         code: "plan_tag_incomplete",
-        severity: "blocking",
-        message: "Tag plan incomplet — format attendu : [SOURCE PLAN — fichier — p.X — nom — cote/annotation — confiance].",
+        severity: "warning",
+        message: "Tag plan peu localisé — privilégier [SOURCE PLAN — fichier — p.X — nom — cote/annotation — confiance].",
         excerpt: line.slice(0, 140),
       });
     }
 
-    // Placeholder dans le corps contractuel.
+    // Placeholder résiduel dans le corps (alerte à vérifier).
     if (PLACEHOLDER_BODY.test(line)) {
-      issues.push({ code: "placeholder", severity: "blocking", message: "Placeholder interdit dans le corps (TEST / à compléter / xxx…).", excerpt: line.slice(0, 140) });
+      issues.push({ code: "placeholder", severity: "warning", message: "Placeholder possible dans le corps (TEST / à compléter / xxx…) — à vérifier.", excerpt: line.slice(0, 140) });
     }
 
     // R5/R6 — en mode enrichi avec CCTP officiel : une norme ABSENTE de l'officiel

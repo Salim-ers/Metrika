@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { LOTS_BTP, PROJECT_TYPES } from "@/lib/constants";
 import { GENERATION_MODES, type GenerationMode, ACTOR_ROLES, type ActorEntry } from "@/lib/fidelity";
 import { intervenantBlockingErrors } from "@/lib/blocking-errors";
-import { validateCctpContent, cctpBlockingIssues } from "@/lib/cctp-validate";
+import { validateCctpContent } from "@/lib/cctp-validate";
 import { cn } from "@/lib/utils";
 import { PdfDropzone } from "@/components/ui/pdf-dropzone";
 import { getCompany } from "@/lib/client-data";
@@ -255,10 +255,11 @@ export default function CctpPage() {
     () => (sections.length ? validateCctpContent(sections.map((s) => s.content).join("\n\n"), { mode, officialCctp: officialRef.current }) : []),
     [sections, mode],
   );
-  const cctpBlocking = cctpBlockingIssues(cctpIssues);
+  // Les contrôles CCTP sont des ALERTES (non bloquantes) : l'export est gardé par
+  // la validation humaine des sections, pas par des heuristiques sur du texte libre.
   const auditReady = !preaudit || preaudit.pretPourGeneration !== false;
   const canGenerate = prepared && actorErrors.length === 0 && auditReady;
-  const canExportCctp = allValidated && cctpBlocking.length === 0;
+  const canExportCctp = allValidated;
 
   async function exportCctp(kind: "docx" | "pdf") {
     try {
@@ -608,16 +609,16 @@ export default function CctpPage() {
                 );
               })}
 
-              {/* Contrôles de fidélité du texte généré (R3/R5/R6 — garde-fou code) */}
+              {/* Contrôles de fidélité du texte généré (R3/R5/R6) — ALERTES non bloquantes */}
               {cctpIssues.length > 0 && (
-                <Card className={cn(cctpBlocking.length > 0 ? "border-destructive/40 bg-destructive/5" : "border-warning/40 bg-warning/5")}>
-                  <CardHeader><CardTitle className="flex items-center gap-2 text-navy-900"><ShieldCheck className="size-4" /> Contrôles de fidélité ({cctpIssues.length})</CardTitle></CardHeader>
+                <Card className="border-warning/40 bg-warning/5">
+                  <CardHeader><CardTitle className="flex items-center gap-2 text-navy-900"><ShieldCheck className="size-4" /> Contrôles de fidélité — {cctpIssues.length} point(s) à vérifier</CardTitle></CardHeader>
                   <CardContent className="space-y-1.5 text-xs text-navy-800">
-                    {cctpBlocking.length > 0 && <p className="font-semibold text-destructive">{cctpBlocking.length} écart(s) bloquant(s) — export désactivé. Corrigez les sections concernées.</p>}
+                    <p className="text-muted-foreground">Alertes (non bloquantes) — vérifiez puis validez les sections. L’export reste possible.</p>
                     <ul className="max-h-48 list-disc space-y-1 overflow-auto pl-4">
                       {cctpIssues.slice(0, 20).map((it, i) => (
                         <li key={i}>
-                          <span className={it.severity === "blocking" ? "font-medium text-destructive" : "text-warning-foreground"}>{it.severity === "blocking" ? "Bloquant" : "Alerte"} :</span> {it.message}
+                          <span className="text-warning-foreground">Alerte :</span> {it.message}
                           {it.excerpt ? <span className="block truncate text-[11px] italic text-muted-foreground">« {it.excerpt} »</span> : null}
                         </li>
                       ))}
@@ -632,9 +633,7 @@ export default function CctpPage() {
                   <p className="text-sm text-navy-800">
                     {!allValidated
                       ? "Validez toutes les sections pour débloquer l’export final."
-                      : cctpBlocking.length > 0
-                        ? "Des écarts bloquants subsistent (voir « Contrôles de fidélité ») — corrigez-les pour exporter."
-                        : "Toutes les sections sont validées. Vous pouvez exporter le document officiel."}
+                      : "Toutes les sections sont validées. Vous pouvez exporter le document officiel."}
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
                     {canExportCctp && (

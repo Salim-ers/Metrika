@@ -28,11 +28,17 @@ Pièce **absente** : CDPGF officiel, plan VRD.
 4. **Séparation stricte** : contractuel / calculé / à confirmer / complément Metrika.
 5. **Compléments Metrika** en annexe ou marqués
    `[COMPLÉMENT METRIKA — NON CONTRACTUEL — À VALIDER BET/MOE]`.
-6. **Erreurs bloquantes** (export désactivé), appliquées CÔTÉ CODE :
-   - DPGF : quantité sans source, unité absente, prix remplacé par 0, placeholder.
-   - CCTP (post-génération, `cctp-validate`) : tag plan incomplet, placeholder,
-     norme ajoutée non taguée (mode enrichi). Intervenant ambigu / rôle déduit
-     **bloquent la génération** (table intervenants éditable pour corriger).
+6. **Erreurs bloquantes** côté code — uniquement sur les données STRUCTURÉES
+   (fiables à contrôler) :
+   - DPGF : quantité sans source, unité absente, prix remplacé par 0, placeholder
+     → export désactivé.
+   - Intervenants : rôle déduit **sans source**, ou même nom sur des rôles
+     **incompatibles** (Archi = MOE reste autorisé) → génération bloquée (table
+     éditable pour corriger).
+   - CCTP texte libre (`cctp-validate`) : tag plan peu localisé, placeholder, norme
+     ajoutée non taguée = **ALERTES non bloquantes** (le texte libre est trop
+     variable pour un blocage mécanique fiable). Garde-fou réel = **validation
+     humaine par section** + pré-audit.
    - Contradiction sémantique avec le CCTP officiel = relevée par le pré-audit IA.
 7. **Pré-audit obligatoire** avant la génération : pièces utilisées / manquantes,
    données confirmées / à confirmer, contradictions, compléments Metrika. La

@@ -2,17 +2,23 @@ import { describe, it, expect } from "vitest";
 import { validateCctpContent, cctpBlockingIssues } from "./cctp-validate";
 
 describe("validateCctpContent (garde-fou CCTP côté code)", () => {
-  it("bloque un tag plan incomplet ([SOURCE PLAN] nu)", () => {
+  it("signale (sans bloquer) un tag plan peu localisé ([SOURCE PLAN] nu)", () => {
     const issues = validateCctpContent("[SOURCE PLAN] Voile d'épaisseur 20 cm.");
     expect(issues.some((i) => i.code === "plan_tag_incomplete")).toBe(true);
+    expect(issues.every((i) => i.severity === "warning")).toBe(true);
   });
 
-  it("accepte un tag plan détaillé (6 parties)", () => {
+  it("accepte un tag plan localisé (≥ 3 champs, même sans cote explicite)", () => {
+    const ok = "[SOURCE PLAN — A-101.pdf — p.3 — Plan RDC — high] Longueur du dallage.";
+    expect(validateCctpContent(ok).some((i) => i.code === "plan_tag_incomplete")).toBe(false);
+  });
+
+  it("accepte un tag plan détaillé complet (6 champs)", () => {
     const ok = "[SOURCE PLAN — A-101.pdf — p.3 — Plan RDC — 65,60 m — high] Longueur du dallage.";
     expect(validateCctpContent(ok).some((i) => i.code === "plan_tag_incomplete")).toBe(false);
   });
 
-  it("bloque un placeholder dans le corps", () => {
+  it("signale un placeholder dans le corps (non bloquant)", () => {
     const issues = validateCctpContent("Maître d'ouvrage : à compléter.");
     expect(issues.some((i) => i.code === "placeholder")).toBe(true);
   });
@@ -39,8 +45,9 @@ describe("validateCctpContent (garde-fou CCTP côté code)", () => {
     expect(issues.some((i) => i.code === "norm_added_untagged")).toBe(false);
   });
 
-  it("cctpBlockingIssues ne renvoie que les bloquants", () => {
+  it("les contrôles CCTP ne sont jamais bloquants (export jamais verrouillé par eux)", () => {
     const all = validateCctpContent("[SOURCE PLAN] x\nNF EN 206 ajoutée.", { mode: "enrichi", officialCctp: "rien" });
-    expect(cctpBlockingIssues(all).every((i) => i.severity === "blocking")).toBe(true);
+    expect(all.length).toBeGreaterThan(0);
+    expect(cctpBlockingIssues(all)).toEqual([]);
   });
 });
