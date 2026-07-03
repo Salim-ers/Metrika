@@ -2,6 +2,7 @@
 
 import { CompanyExport, dataUrlToBytes, winAnsiSafe, legalLines } from "@/lib/export-common";
 import { ACTOR_ROLES, type ActorRole } from "@/lib/fidelity";
+import { cleanForExport } from "@/lib/cctp-clean";
 
 export interface CctpSection {
   lot: string;
@@ -27,8 +28,14 @@ export interface CctpMeta {
   version?: number;
   /** Table unique des intervenants du projet (remplace owner/architect/bet si fournie). */
   actors?: CctpExportActor[];
-  /** Registre des points à vérifier → annexe dédiée. */
+  /**
+   * Registre des points à vérifier. Le document CLIENT est toujours nettoyé
+   * (tags internes retirés, chapitre « Points à compléter » exclu) ; ce
+   * registre n'est annexé QUE si includeRegister est demandé (version de
+   * travail interne).
+   */
   verifyRegister?: CctpVerifyPoint[];
+  includeRegister?: boolean;
 }
 
 const actorLabel = (role: string): string => ACTOR_ROLES[role as ActorRole]?.label ?? role;
@@ -135,8 +142,11 @@ export async function exportCctpPdf(
     page.drawText(t, { x: (W - f.widthOfTextAtSize(t, size)) / 2, y: yy, size, font: f, color });
   };
 
+  // Document CLIENT : sections nettoyées (tags internes retirés, chapitre
+  // « Points à compléter » exclu). Le registre n'est annexé que sur demande.
+  sections = sections.map((s) => ({ ...s, content: cleanForExport(s.content ?? "") }));
   const { items, toc } = buildItems(sections);
-  const register = meta?.verifyRegister ?? [];
+  const register = meta?.includeRegister ? (meta?.verifyRegister ?? []) : [];
   if (register.length > 0) {
     toc.push({ level: 0, id: -1, num: "A", text: "Annexe — Registre des points à vérifier" });
   }
@@ -301,16 +311,7 @@ export async function exportCctpPdf(
       const lines = wrap(it.text, font, 9, W - 2 * M - 16);
       lines.forEach((ln, k) => { ensure(13); page.drawText(safe((k === 0 ? "•  " : "   ") + ln), { x: M + 12, y, size: 9, font, color: NAVY }); y -= 13; });
     } else if (it.kind === "p") {
-      // Encadré discret pour les paragraphes « à confirmer » (repérage visuel).
-      const flagged = /\[À CONFIRMER\]|\[A CONFIRMER\]/i.test(it.text);
-      const pls = wrap(it.text, font, 9, W - 2 * M - (flagged ? 12 : 0));
-      if (flagged) {
-        ensure(pls.length * 13 + 8);
-        const boxH2 = pls.length * 13 + 6;
-        page.drawRectangle({ x: M, y: y - boxH2 + 11, width: W - 2 * M, height: boxH2, color: rgb(0.99, 0.96, 0.88) });
-        page.drawRectangle({ x: M, y: y - boxH2 + 11, width: 2.5, height: boxH2, color: GOLD });
-      }
-      for (const ln of pls) { ensure(13); page.drawText(safe(ln), { x: M + (flagged ? 8 : 0), y, size: 9, font, color: NAVY }); y -= 13; }
+      for (const ln of wrap(it.text, font, 9, W - 2 * M)) { ensure(13); page.drawText(safe(ln), { x: M, y, size: 9, font, color: NAVY }); y -= 13; }
       y -= 2;
     } else { y -= 5; }
   }
@@ -401,6 +402,8 @@ export async function exportCctpPdf(
 // ── DOCX ──────────────────────────────────────────────────────────
 export async function exportCctpDocx(sections: CctpSection[], company?: CompanyExport | null, meta?: CctpMeta) {
   const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = await import("docx");
+  // Document CLIENT : sections nettoyées (tags internes retirés, chapitre interne exclu).
+  sections = sections.map((s) => ({ ...s, content: cleanForExport(s.content ?? "") }));
   const dateLabel = meta?.dateLabel || new Date().toLocaleDateString("fr-FR");
   const children: InstanceType<typeof Paragraph>[] = [];
 
@@ -453,8 +456,8 @@ export async function exportCctpDocx(sections: CctpSection[], company?: CompanyE
     }
   }
 
-  // Annexe — registre des points à vérifier.
-  const dRegister = meta?.verifyRegister ?? [];
+  // Annexe — registre des points à vérifier (version de travail uniquement).
+  const dRegister = meta?.includeRegister ? (meta?.verifyRegister ?? []) : [];
   if (dRegister.length > 0) {
     const KIND_FR: Record<string, string> = {
       conflit: "Contradiction", localisation: "Localisation", a_metrer: "À métrer",

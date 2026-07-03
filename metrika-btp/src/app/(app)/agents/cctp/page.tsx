@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils";
 import {
   Loader2, FileText, ShieldCheck, FileDown, Sparkles, X, ScanText, Timer,
   ClipboardCheck, AlertTriangle, Users, Save, Table2, ArrowRight, Eye, PencilLine,
-  ChevronsDownUp, ChevronsUpDown, FolderKanban,
+  ChevronsDownUp, ChevronsUpDown, FolderKanban, Check, RotateCcw,
 } from "lucide-react";
 
 interface Section { lot: string; content: string; validated?: boolean }
@@ -105,6 +105,7 @@ function CctpInner() {
   const [preaudit, setPreaudit] = useState<Preaudit | null>(null);
   const [prepared, setPrepared] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
+  const [openSection, setOpenSection] = useState<string>("projet");
   const officialRef = useRef("");
   const preparedRef = useRef(false);
   const configuredRefsRef = useRef("");
@@ -480,6 +481,7 @@ function CctpInner() {
   }
 
   const previewActors = (actors ?? []).map((a) => ({ role: a.role, value: a.value, status: a.status }));
+  const officialCount = officialCctpFiles.length + (officialCctpText.trim() ? 1 : 0);
   const inputCls = "h-10 w-full rounded-md border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring";
 
   return (
@@ -521,122 +523,150 @@ function CctpInner() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[400px_1fr]">
-        {/* ══ Colonne paramètres (étape 1) ══ */}
-        <Card className="h-fit">
-          <CardHeader className="flex-row items-center justify-between">
-            <CardTitle className="text-navy-900">1 · Pièces & paramètres</CardTitle>
-            {locked && <Badge variant="success">Verrouillé</Badge>}
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Type de projet</Label>
-                <select value={projectType} onChange={(e) => { setProjectType(e.target.value); invalidatePrep(); }} className={inputCls}>
-                  {PROJECT_TYPES.map((t) => <option key={t}>{t}</option>)}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label>Juridiction</Label>
-                <select value={jurisdiction} onChange={(e) => { setJurisdiction(e.target.value); invalidatePrep(); }} className={inputCls}>
-                  {JURISDICTIONS.map((j) => <option key={j.value} value={j.value}>{j.label}</option>)}
-                </select>
-                <p className="text-[11px] text-muted-foreground">{JURISDICTIONS.find((j) => j.value === jurisdiction)?.refs}</p>
-              </div>
-            </div>
-
-            <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Page de garde (officielle)</p>
-              <div className="space-y-2">
-                <Label>Nom du projet</Label>
-                <input value={projectName} onChange={(e) => { setProjectName(e.target.value); setDirty(true); }} placeholder="Ex : Immeuble collectif de 11 logements" className={inputCls} />
-              </div>
-              <div className="space-y-2">
-                <Label>Maître d’ouvrage</Label>
-                <input value={owner} onChange={(e) => { setOwner(e.target.value); setDirty(true); }} placeholder="Ex : OPH Ariège" className={inputCls} />
-              </div>
-              <div className="space-y-2">
-                <Label>Architecte / maîtrise d’œuvre</Label>
-                <input value={architect} onChange={(e) => { setArchitect(e.target.value); setDirty(true); }} placeholder="Cabinet d’architecture…" className={inputCls} />
-              </div>
-              <div className="space-y-2">
-                <Label>Bureau d’études techniques</Label>
-                <input value={bet} onChange={(e) => { setBet(e.target.value); setDirty(true); }} placeholder="BET structure / fluides…" className={inputCls} />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Lots à inclure ({selected.length})</Label>
-              <div className="flex flex-wrap gap-2">
-                {LOTS_BTP.map((lot) => (
-                  <button
-                    key={lot}
-                    onClick={() => toggleLot(lot)}
-                    disabled={locked}
-                    className={cn(
-                      "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                      selected.includes(lot)
-                        ? "border-gold-500 bg-gold-500 text-navy-900"
-                        : "border-border bg-card text-navy-700 hover:border-gold-400",
-                      locked && "cursor-not-allowed opacity-50",
-                    )}
-                  >
-                    {lot}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2 rounded-lg border border-navy-100 bg-navy-50/30 p-3">
-              <Label className="flex items-center gap-1.5 text-navy-800"><FileText className="size-3.5 text-navy-600" /> CCTP officiel (optionnel)</Label>
-              <p className="text-[11px] leading-relaxed text-muted-foreground">S’il est fourni, il <strong>pilote</strong> le contenu généré (structure, prescriptions, normes). Les plans ne servent qu’à compléter/vérifier.</p>
-              <PdfDropzone
-                title="Glissez le CCTP officiel (PDF)"
-                hint="Pilote le document"
-                onFiles={(list) => { setOfficialCctpFiles((p) => [...p, ...list]); invalidatePrep(); }}
+        {/* ══ Colonne paramètres — sections repliables + action unique ══ */}
+        <div className="h-fit space-y-3">
+          {/* 1 · Projet & lots */}
+          <AccordionItem
+            open={openSection === "projet"}
+            onToggle={() => setOpenSection((s) => (s === "projet" ? "" : "projet"))}
+            header={
+              <SectionHeader
+                step={1}
+                title="Projet & lots"
+                done={selected.length > 0}
+                summary={`${projectType} · ${jurisdiction}${selected.length ? ` · ${selected.length} lot(s)` : " · aucun lot sélectionné"}`}
               />
-              {officialCctpFiles.length > 0 && (
-                <ul className="space-y-1.5">
-                  {officialCctpFiles.map((f, i) => (
-                    <li key={i} className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs">
-                      <FileText className="size-3.5 shrink-0 text-muted-foreground" />
-                      <span className="flex-1 truncate text-navy-800">{f.name}</span>
-                      <button onClick={() => { setOfficialCctpFiles((p) => p.filter((_, j) => j !== i)); invalidatePrep(); }} className="text-destructive hover:opacity-70"><X className="size-3.5" /></button>
-                    </li>
+            }
+          >
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Type de projet</Label>
+                  <select value={projectType} onChange={(e) => { setProjectType(e.target.value); invalidatePrep(); }} className={inputCls}>
+                    {PROJECT_TYPES.map((t) => <option key={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Juridiction</Label>
+                  <select value={jurisdiction} onChange={(e) => { setJurisdiction(e.target.value); invalidatePrep(); }} className={inputCls}>
+                    {JURISDICTIONS.map((j) => <option key={j.value} value={j.value}>{j.label}</option>)}
+                  </select>
+                  <p className="text-[11px] text-muted-foreground">{JURISDICTIONS.find((j) => j.value === jurisdiction)?.refs}</p>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Lots à inclure</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {LOTS_BTP.map((lot) => (
+                    <button
+                      key={lot}
+                      onClick={() => toggleLot(lot)}
+                      disabled={locked}
+                      className={cn(
+                        "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                        selected.includes(lot)
+                          ? "border-gold-500 bg-gold-500 text-navy-900"
+                          : "border-border bg-card text-navy-700 hover:border-gold-400",
+                        locked && "cursor-not-allowed opacity-50",
+                      )}
+                    >
+                      {lot}
+                    </button>
                   ))}
-                </ul>
-              )}
-              <Textarea value={officialCctpText} onChange={(e) => { setOfficialCctpText(e.target.value); invalidatePrep(); }} className="min-h-[70px] text-xs" placeholder="…ou collez le texte du CCTP officiel" />
+                </div>
+              </div>
             </div>
+          </AccordionItem>
 
-            <div className="space-y-2">
-              <Label>Plans du projet (PDF, optionnel)</Label>
-              <PdfDropzone
-                title="Glissez vos plans PDF ici ou cliquez"
-                hint="Plans lus automatiquement pour adapter le CCTP"
-                onFiles={(list) => { setPlanFiles((p) => [...p, ...list]); invalidatePrep(); }}
+          {/* 2 · Pièces sources */}
+          <AccordionItem
+            open={openSection === "pieces"}
+            onToggle={() => setOpenSection((s) => (s === "pieces" ? "" : "pieces"))}
+            header={
+              <SectionHeader
+                step={2}
+                title="Pièces sources"
+                done={officialCount + planFiles.length > 0}
+                summary={
+                  officialCount + planFiles.length > 0
+                    ? [officialCount ? `${officialCount} CCTP officiel` : "", planFiles.length ? `${planFiles.length} plan(s)` : "", context.trim() ? "exigences" : ""].filter(Boolean).join(" · ")
+                    : "Aucune pièce — tout élément non sourcé sera marqué « à confirmer »"
+                }
               />
-              {planFiles.length > 0 && (
-                <ul className="space-y-1.5">
-                  {planFiles.map((f, i) => (
-                    <li key={i} className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs">
-                      <FileText className="size-3.5 shrink-0 text-muted-foreground" />
-                      <span className="flex-1 truncate text-navy-800">{f.name}</span>
-                      <button onClick={() => { setPlanFiles((p) => p.filter((_, j) => j !== i)); invalidatePrep(); }} className="text-destructive hover:opacity-70">
-                        <X className="size-3.5" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+            }
+          >
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1.5">CCTP officiel <span className="font-normal text-muted-foreground">(pilote le document)</span></Label>
+                <PdfDropzone
+                  title="Glissez le CCTP officiel (PDF)"
+                  hint="Structure, prescriptions et normes reprises fidèlement"
+                  onFiles={(list) => { setOfficialCctpFiles((p) => [...p, ...list]); invalidatePrep(); }}
+                />
+                <FileChips files={officialCctpFiles} onRemove={(i) => { setOfficialCctpFiles((p) => p.filter((_, j) => j !== i)); invalidatePrep(); }} />
+                <Textarea value={officialCctpText} onChange={(e) => { setOfficialCctpText(e.target.value); invalidatePrep(); }} className="min-h-[60px] text-xs" placeholder="…ou collez le texte du CCTP officiel" />
+              </div>
+              <div className="space-y-2">
+                <Label>Plans du projet <span className="font-normal text-muted-foreground">(complètent / vérifient)</span></Label>
+                <PdfDropzone
+                  title="Glissez vos plans PDF ici ou cliquez"
+                  hint="Lus automatiquement pour adapter le CCTP"
+                  onFiles={(list) => { setPlanFiles((p) => [...p, ...list]); invalidatePrep(); }}
+                />
+                <FileChips files={planFiles} onRemove={(i) => { setPlanFiles((p) => p.filter((_, j) => j !== i)); invalidatePrep(); }} />
+              </div>
+              <div className="space-y-2">
+                <Label>Exigences particulières</Label>
+                <Textarea value={context} onChange={(e) => { setContext(e.target.value); invalidatePrep(); }} className="min-h-[60px]" placeholder="Contraintes du projet, normes spécifiques, niveau de finition…" />
+              </div>
             </div>
+          </AccordionItem>
 
-            <div className="space-y-2">
-              <Label>Exigences particulières (optionnel)</Label>
-              <Textarea value={context} onChange={(e) => { setContext(e.target.value); invalidatePrep(); }} placeholder="Contraintes du projet, normes spécifiques, niveau de finition…" />
+          {/* 3 · Page de garde */}
+          <AccordionItem
+            open={openSection === "garde"}
+            onToggle={() => setOpenSection((s) => (s === "garde" ? "" : "garde"))}
+            header={
+              <SectionHeader
+                step={3}
+                title="Page de garde"
+                done={!!projectName.trim()}
+                summary={projectName.trim() ? [projectName, owner].filter(Boolean).join(" — ") : "Nom du projet et intervenants à renseigner"}
+              />
+            }
+          >
+            <div className="space-y-3">
+              {([
+                ["Nom du projet", projectName, setProjectName, "Ex : Immeuble collectif de 11 logements"],
+                ["Maître d’ouvrage", owner, setOwner, "Ex : OPH Ariège"],
+                ["Architecte / maîtrise d’œuvre", architect, setArchitect, "Cabinet d’architecture…"],
+                ["Bureau d’études techniques", bet, setBet, "BET structure / fluides…"],
+              ] as const).map(([label, value, setter, placeholder]) => (
+                <div key={label} className="space-y-1.5">
+                  <Label>{label}</Label>
+                  <input value={value} onChange={(e) => { setter(e.target.value); setDirty(true); }} placeholder={placeholder} className={inputCls} />
+                </div>
+              ))}
+              <p className="text-[11px] text-muted-foreground">
+                Si un projet est lié, la table des intervenants extraite à l’audit complète automatiquement ces champs.
+              </p>
             </div>
+          </AccordionItem>
 
-            <div className="space-y-2">
-              <Label>Mode de rédaction</Label>
+          {/* 4 · Rédaction */}
+          <AccordionItem
+            open={openSection === "options"}
+            onToggle={() => setOpenSection((s) => (s === "options" ? "" : "options"))}
+            header={
+              <SectionHeader
+                step={4}
+                title="Rédaction"
+                done
+                summary={`${GENERATION_MODES[mode].label} · ${deep ? "Exhaustif (DCE complet)" : "Rapide (1 passe)"}`}
+              />
+            }
+          >
+            <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
                 {(["fidele", "enrichi"] as const).map((m) => (
                   <button
@@ -653,45 +683,66 @@ function CctpInner() {
                 ))}
               </div>
               <p className="text-[11px] leading-relaxed text-muted-foreground">{GENERATION_MODES[mode].description}</p>
+              <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-muted/20 p-2.5 text-xs">
+                <input type="checkbox" checked={deep} onChange={(e) => setDeep(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-gold-500" />
+                <span>
+                  <span className="font-semibold text-navy-800">Mode exhaustif (CCTP DCE complet)</span>
+                  <span className="block text-muted-foreground">Plusieurs passes par lot suivant le plan type 15 chapitres — sans jamais remplir artificiellement.</span>
+                </span>
+              </label>
             </div>
+          </AccordionItem>
 
-            <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-muted/20 p-3 text-xs">
-              <input type="checkbox" checked={deep} onChange={(e) => setDeep(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-gold-500" />
-              <span>
-                <span className="font-semibold text-navy-800">Mode exhaustif (CCTP DCE complet)</span>
-                <span className="block text-muted-foreground">Plusieurs passes par lot suivant le plan type 15 chapitres. Vise un document DCE complet quand les pièces le permettent — sans jamais remplir artificiellement.</span>
-              </span>
-            </label>
-
-            <div className="space-y-2">
-              <Button variant={prepared ? "outline" : "gold"} size="lg" className="w-full" disabled={busy} onClick={() => prepare()}>
-                {busy && !prepared ? <Loader2 className="size-4 animate-spin" /> : <ClipboardCheck className="size-4" />}
-                {busy && !prepared ? (phase || "Préparation…") : prepared ? "2 · Refaire l'audit préalable" : "2 · Préparer & auditer (obligatoire)"}
-              </Button>
-              <Button variant="gold" size="lg" className="w-full" disabled={busy || !canGenerate} onClick={() => generate()}>
-                {busy && prepared ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-                {busy && prepared ? `${phase || "Génération…"} ${fmtDuration(elapsed)}` : "3 · Générer le CCTP"}
-              </Button>
-              {!prepared && <p className="text-[11px] text-muted-foreground">L’audit préalable (pièces, intervenants, écarts) est obligatoire avant la génération.</p>}
-              {prepared && actorErrors.length > 0 && <p className="text-[11px] font-medium text-destructive">Génération bloquée : levez les {actorErrors.length} erreur(s) d’intervenants (table à droite).</p>}
+          {/* Action unique adaptative */}
+          <Card className="border-gold-200 bg-gold-50/30">
+            <CardContent className="space-y-2.5 p-4">
+              {locked && <Badge variant="success">Document verrouillé</Badge>}
+              {!prepared ? (
+                <>
+                  <Button variant="gold" size="lg" className="w-full" disabled={busy} onClick={() => prepare()}>
+                    {busy ? <Loader2 className="size-4 animate-spin" /> : <ClipboardCheck className="size-4" />}
+                    {busy ? (phase || "Audit en cours…") : "Auditer les pièces"}
+                  </Button>
+                  <p className="text-center text-[11px] text-muted-foreground">
+                    Étape obligatoire : pièces, intervenants et écarts sont vérifiés avant toute génération.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <Button variant="gold" size="lg" className="w-full" disabled={busy || !canGenerate} onClick={() => generate()}>
+                    {busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                    {busy ? `${phase || "Génération…"} ${fmtDuration(elapsed)}` : "Générer le CCTP"}
+                  </Button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => prepare()}
+                    className="mx-auto flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-navy-800 disabled:opacity-50"
+                  >
+                    <RotateCcw className="size-3" /> Refaire l’audit préalable
+                  </button>
+                </>
+              )}
+              {prepared && actorErrors.length > 0 && (
+                <p className="text-[11px] font-medium text-destructive">Génération bloquée : levez les {actorErrors.length} erreur(s) d’intervenants (table à droite).</p>
+              )}
               {prepared && actorErrors.length === 0 && !auditReady && (
                 <>
                   <p className="text-[11px] font-medium text-warning-foreground">L’audit ne recommande pas la génération (pièces manquantes / contradictions).</p>
                   <Button variant="outline" size="sm" className="w-full" disabled={busy} onClick={() => generate(true)}>Générer malgré l’audit (sous ma responsabilité)</Button>
                 </>
               )}
-            </div>
-
-            {(busy || lastDuration !== null) && (
-              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-                <Timer className="size-3.5 text-gold-600" />
-                {busy
-                  ? <span>Temps écoulé : <span className="font-mono font-semibold text-navy-800">{fmtDuration(elapsed)}</span></span>
-                  : <span>Généré en <span className="font-mono font-semibold text-navy-800">{fmtDuration(lastDuration ?? 0)}</span></span>}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              {(busy || lastDuration !== null) && (
+                <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                  <Timer className="size-3.5 text-gold-600" />
+                  {busy
+                    ? <span>Temps écoulé : <span className="font-mono font-semibold text-navy-800">{fmtDuration(elapsed)}</span></span>
+                    : <span>Généré en <span className="font-mono font-semibold text-navy-800">{fmtDuration(lastDuration ?? 0)}</span></span>}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
         {/* ══ Colonne document ══ */}
         <div className="space-y-4">
@@ -917,5 +968,43 @@ function CctpInner() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** En-tête de section repliable : pastille d'étape + titre + résumé dynamique. */
+function SectionHeader({ step, title, summary, done }: { step: number; title: string; summary?: string; done?: boolean }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2.5">
+      <span
+        className={cn(
+          "flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold transition-colors",
+          done ? "bg-gold-500 text-navy-900" : "bg-muted text-muted-foreground",
+        )}
+      >
+        {done ? <Check className="size-3" /> : step}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-navy-900">{title}</span>
+        {summary ? <span className="block truncate text-[11px] font-normal text-muted-foreground">{summary}</span> : null}
+      </span>
+    </span>
+  );
+}
+
+/** Liste compacte des fichiers déposés, avec retrait unitaire. */
+function FileChips({ files, onRemove }: { files: File[]; onRemove: (index: number) => void }) {
+  if (files.length === 0) return null;
+  return (
+    <ul className="space-y-1">
+      {files.map((f, i) => (
+        <li key={`${f.name}-${i}`} className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs">
+          <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="flex-1 truncate text-navy-800">{f.name}</span>
+          <button onClick={() => onRemove(i)} className="text-destructive hover:opacity-70" title="Retirer">
+            <X className="size-3.5" />
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }

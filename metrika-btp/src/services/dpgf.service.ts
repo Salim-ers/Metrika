@@ -48,7 +48,7 @@ ${params.cctpText?.trim()
     ? `CCTP ${official ? "(uniquement pour SOURCER les quantités des lignes du cadre, pas pour créer des lignes)" : "à analyser"} :\n"""\n${params.cctpText.slice(0, 60000)}\n"""`
     : ""}
 ${hasImages ? "Le CCTP est fourni sous forme d'images de pages (ci-jointes) : lis-les intégralement." : ""}
-${params.planNotes ? `Dimensions/plans fournis : ${params.planNotes}` : ""}
+${params.planNotes ? `Dimensions/plans fournis (source de métré — calcule les quantités depuis ces cotes) :\n${params.planNotes.slice(0, 30000)}` : ""}
 
 ${official ? CDPGF_MASTER_DIRECTIVE : DPGF_PROVISIONAL_DIRECTIVE}
 

@@ -94,6 +94,7 @@ function DpgfInner() {
   const [cctpId, setCctpId] = useState<string | null>(null);
   const [cctpTitle, setCctpTitle] = useState("");
   const [cctpSections, setCctpSections] = useState<CctpSectionLite[]>([]);
+  const [sourcePlanContext, setSourcePlanContext] = useState("");
   const [dpgfId, setDpgfId] = useState<string | null>(null);
   const [docStatus, setDocStatus] = useState("DRAFT");
   const [docVersion, setDocVersion] = useState(1);
@@ -167,6 +168,9 @@ function DpgfInner() {
           const secs = (d.cctp.sections ?? []).map((s: CctpSectionLite) => ({ id: s.id, lot: s.lot, content: s.content }));
           setCctpSections(secs);
           setCctpText(secs.map((s: CctpSectionLite) => `===== LOT : ${s.lot} =====\n${s.content}`).join("\n\n"));
+          // Synthèse des plans du CCTP source : matière première du métré
+          // (quantités calculées depuis les cotes, status "calculated").
+          setSourcePlanContext(d.cctp.planContext ?? "");
           const nonValid = (d.cctp.sections ?? []).filter((s: { validated?: boolean }) => !s.validated).length;
           toast.success(`CCTP « ${d.cctp.title} » chargé comme source (${secs.length} lot(s)).${nonValid ? ` ${nonValid} section(s) non validée(s) — le DPGF restera provisoire.` : ""}`);
         })
@@ -276,7 +280,13 @@ function DpgfInner() {
       setPhase("Analyse…");
       const res = await fetch("/api/dpgf/convert", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cctpText: fullText, planNotes, officialCdpgf, cctpImages }),
+        body: JSON.stringify({
+          cctpText: fullText,
+          planNotes: [planNotes, sourcePlanContext ? `SYNTHÈSE DES PLANS DU PROJET (source de métré — quantités calculables depuis ces cotes) :\n${sourcePlanContext}` : ""]
+            .filter(Boolean).join("\n\n"),
+          officialCdpgf,
+          cctpImages,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
