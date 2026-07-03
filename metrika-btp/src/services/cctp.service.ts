@@ -1,8 +1,24 @@
 import { runClaude } from "@/lib/ai/client";
-import { CCTP_PROMPT, PLAN_ANALYSIS_PROMPT, cctpModeDirective, CCTP_MASTER_DIRECTIVE } from "@/lib/ai/prompts";
+import {
+  CCTP_PROMPT, PLAN_ANALYSIS_PROMPT, cctpModeDirective, CCTP_MASTER_DIRECTIVE,
+  jurisdictionDirective, LOT_STRUCTURE_DIRECTIVE, type Jurisdiction,
+} from "@/lib/ai/prompts";
 import type { GenerationMode } from "@/lib/fidelity";
 
 interface CctpSectionResult { lot: string; content: string }
+
+export interface CctpGenParams {
+  lot: string;
+  projectType?: string;
+  context?: string;
+  planContext?: string;
+  mode?: GenerationMode;
+  jurisdiction?: Jurisdiction;
+  /** Références réglementaires configurées (bibliothèque validée, Paramètres). */
+  configuredRefs?: string;
+  officialCctp?: string;
+  intervenantsTable?: string;
+}
 
 /** Bloc « CCTP officiel + intervenants » injecté en tête du message (R1/R2). */
 function sourcesBlock(params: { officialCctp?: string; intervenantsTable?: string }): string {
@@ -52,103 +68,104 @@ export async function analyzePlans(images: PlanImage[]): Promise<string> {
 }
 
 /**
- * Génère une section CCTP par lot. La génération produit des BROUILLONS
- * éditables : la validation humaine est requise avant export officiel.
+ * Génère une section CCTP par lot en une seule passe (mode rapide).
+ * La génération produit des BROUILLONS éditables : la validation humaine
+ * est requise avant export officiel.
  */
-export async function generateCctpSection(params: {
-  lot: string;
-  projectType?: string;
-  context?: string;
-  planContext?: string;
-  mode?: GenerationMode;
-  officialCctp?: string;
-  intervenantsTable?: string;
-}): Promise<CctpSectionResult> {
-  const user = `${sourcesBlock(params)}Lot demandé : ${params.lot}
-Type de projet : ${params.projectType ?? "non précisé"}
-Contexte / exigences particulières : ${params.context ?? "aucune"}
-${params.planContext ? `\nSynthèse des plans du projet (à utiliser pour adapter les prescriptions) :\n${params.planContext}` : ""}
+export async function generateCctpSection(params: CctpGenParams): Promise<CctpSectionResult> {
+  const user = `${baseUser(params)}
 
-${cctpModeDirective(params.mode ?? "fidele")}
+${LOT_STRUCTURE_DIRECTIVE}
 
-Rédige la section CCTP de ce lot, niveau économiste senior, intégrable directement à un DCE réel. Document COMPLET et DÉTAILLÉ : traite tous les postes du lot avec, pour chacun, fourniture / mise en œuvre / normes / contrôles / tolérances / interfaces. Aucune synthèse, aucun résumé.`;
+Rédige la section CCTP de ce lot, niveau économiste senior, intégrable directement à un DCE réel, en suivant le plan type des 15 chapitres. Document COMPLET et DÉTAILLÉ : traite tous les postes du lot avec, pour chacun, fourniture / mise en œuvre / normes / contrôles / tolérances / interfaces — uniquement lorsque les sources le permettent, sinon marque [À CONFIRMER]. Aucune synthèse, aucun résumé.`;
 
   const content = await callCctpText(user, 12000);
   return { lot: params.lot, content };
 }
 
-// Bloc Généralités commun à tous les lots : impose le DOUBLE référentiel FR + MA.
-const GENERALITES_CHAPTER =
-  "## GÉNÉRALITÉS, en sous-sections détaillées et développées : " +
-  "### Objet et consistance des travaux ; " +
-  "### Références réglementaires — cite EXPLICITEMENT et SÉPARÉMENT le double référentiel : " +
-  "(a) FRANCE : NF DTU applicables au lot, normes NF EN et Eurocodes (NF EN 1990 à 1999, dont NF EN 1992 béton et NF EN 1998 parasismique), fascicules du CCTG, CCAG-Travaux, Code de la commande publique, réglementation thermique/environnementale en vigueur ; " +
-  "(b) MAROC : normes marocaines NM, Règlement Parasismique RPS 2000 (version en vigueur), Règlement de Construction Parasismique, DTU/CPT applicables, CCAG-T marocain et réglementation des marchés publics marocains ; " +
-  "### Coordination interentreprises et gestion des interfaces ; " +
-  "### Limites de prestations (ce qui est dû / non dû au présent lot) ; " +
-  "### Documents à fournir par l'entreprise (plans d'exécution, notes de calcul, fiches techniques, PV) ; " +
-  "### Contrôles, essais et épreuves ; " +
-  "### Dossier des ouvrages exécutés (DOE) et DIUO. Développe chaque sous-section en plusieurs paragraphes.";
-
-/** Définit les passes de rédaction d'un lot (mode exhaustif, document ≥ 30 pages). */
+/**
+ * Passes de rédaction d'un lot en mode exhaustif (document DCE complet).
+ * Les passes couvrent ensemble les 15 chapitres du plan type ; le Gros Œuvre
+ * a une passe « description » supplémentaire (volume d'ouvrages).
+ */
 function passesFor(lot: string): { label: string; chapters: string }[] {
   const isGO = /gros\s*[œo]e?uvre/i.test(lot);
-  const generalites = { label: "Généralités (référentiel FR + Maroc)", chapters: GENERALITES_CHAPTER };
+
+  const cadrage = {
+    label: "Cadrage & généralités (ch. 1 à 6)",
+    chapters:
+      "## Objet du lot ## Étendue des travaux ## Documents et pièces sources ## Références réglementaires " +
+      "## Hypothèses extraites des pièces ## Prescriptions générales. " +
+      "Développe chaque chapitre en sous-sections ### détaillées : consistance des travaux, limites de prestations " +
+      "(dû / non dû au présent lot), documents d'exécution dus par l'entreprise, qualité et provenance des matériaux, " +
+      "coordination interentreprises. Les références réglementaires suivent STRICTEMENT la directive de juridiction.",
+  };
+
+  const localisationMeo = {
+    label: "Localisation & mise en œuvre (ch. 8 et 9)",
+    chapters:
+      "## Localisation — pour chaque famille d'ouvrage, sa localisation issue des plans (tag plan détaillé obligatoire) " +
+      "ou « Localisation à compléter d'après plans [À CONFIRMER] ». " +
+      "PUIS ## Mise en œuvre — conditions d'exécution, séquences, sujétions, prescriptions d'exécution par ouvrage " +
+      "(sous-titres ###), uniquement lorsque les sources le permettent.",
+  };
+
+  const cloture = {
+    label: "Coordination, réception & clôture (ch. 10 à 15)",
+    chapters:
+      "## Coordination avec les autres lots (interfaces, réservations, attentes, ordonnancement) " +
+      "## Tolérances, réception et contrôles (contrôles internes, essais, épreuves, critères d'acceptation, tolérances chiffrées UNIQUEMENT si sourcées) " +
+      "## Documents à remettre (plans d'exécution, notes de calcul, fiches techniques, PV d'essais, DOE/DIUO) " +
+      "## Exclusions ## Options / variantes ## Points à compléter — registre récapitulatif de TOUS les [À CONFIRMER] du lot.",
+  };
 
   if (isGO) {
     return [
-      generalites,
+      cadrage,
       {
-        label: "Travaux préparatoires & terrassements",
+        label: "Description des ouvrages — infrastructure (ch. 7, 1/2)",
         chapters:
-          "## TRAVAUX PRÉPARATOIRES (### Installation de chantier ; ### Panneau de chantier et branchements provisoires ; ### Implantation par géomètre agréé ; ### Sécurité et protections collectives ; ### Protection des existants et avoisinants ; ### Gestion, tri et évacuation des déchets) " +
-          "PUIS ## TERRASSEMENTS (### Décapage de la terre végétale ; ### Fouilles en rigoles, puits et pleine masse ; ### Blindages et épuisements ; ### Plateformes et fonds de forme ; ### Remblais et évacuation des terres)",
+          "## Description des ouvrages — PREMIÈRE PARTIE : ### Installation de chantier ; ### Implantation ; " +
+          "### Terrassements (décapage, fouilles, plateformes, remblais, évacuation) ; ### Réseaux enterrés (EU/EV/EP, regards, tranchées) ; " +
+          "### Béton de propreté ; ### Fondations (semelles, radier le cas échéant — avec classes d'exposition et dosages UNIQUEMENT si sourcés) ; " +
+          "### Infrastructure et soubassements (voiles, cuvelage, drainage). " +
+          "Pour chaque poste : fourniture, mise en œuvre, normes (selon juridiction), contrôles, tolérances, interfaces.",
       },
       {
-        label: "Réseaux enterrés, fondations & infrastructure",
+        label: "Description des ouvrages — superstructure (ch. 7, 2/2)",
         chapters:
-          "## RÉSEAUX ENTERRÉS (### Eaux usées EU ; ### Eaux vannes EV ; ### Eaux pluviales EP ; ### Regards et boîtes de branchement ; ### Tranchées, lit de pose et grillage avertisseur) " +
-          "PUIS ## FONDATIONS (### Béton de propreté ; ### Semelles isolées et filantes ; ### Radier le cas échéant ; ### Longrines — avec classes d'exposition XC/XA, dosages, enrobages) " +
-          "PUIS ## INFRASTRUCTURE ET SOUBASSEMENTS (### Voiles d'infrastructure ; ### Cuvelage / étanchéité enterrée ; ### Drainage périphérique)",
+          "## Description des ouvrages — SECONDE PARTIE (poursuite du même chapitre, ne répète pas le titre ## Description des ouvrages, continue en ###) : " +
+          "### Voiles en béton armé ; ### Poteaux ; ### Poutres, chaînages et linteaux ; ### Planchers et dalles ; ### Escaliers ; " +
+          "### Acrotères et bandeaux ; ### Maçonneries de remplissage ; ### Réservations, incorporations et scellements ; " +
+          "### Rebouchages et raccords ; ### Ouvrages divers. " +
+          "Pour chaque poste : béton/matériaux (classe, dosage si sourcés), aciers, coffrage, mise en œuvre, contrôles, tolérances, interfaces.",
       },
-      {
-        label: "Superstructure béton armé",
-        chapters:
-          "## SUPERSTRUCTURE EN BÉTON ARMÉ, poste par poste très détaillé : " +
-          "### Voiles en béton armé ; ### Poteaux en béton armé ; ### Poutres, chaînages et linteaux ; " +
-          "### Planchers et dalles (dalles pleines, dalles sur terre-plein, dalles de toiture-terrasse) ; ### Escaliers en béton armé. " +
-          "Pour chaque poste : béton (classe de résistance, dosage, adjuvants, classe d'exposition), aciers (nuance, enrobage, façonnage), coffrage (type, qualité de parement, tolérances), mise en œuvre, contrôles, tolérances, interfaces.",
-      },
-      {
-        label: "Maçonneries, ouvrages divers & réception",
-        chapters:
-          "## MAÇONNERIES (### Maçonnerie de remplissage en blocs/briques ; ### Chaînages et raidisseurs) " +
-          "PUIS ## ACROTÈRES ET BANDEAUX ## RÉSERVATIONS, INCORPORATIONS ET SCELLEMENTS ## REBOUCHAGES ET RACCORDS " +
-          "## OUVRAGES DIVERS (appuis, seuils, formes de pente, joints de dilatation/fractionnement) " +
-          "PUIS ## CONTRÔLES, ESSAIS ET RÉCEPTION DES OUVRAGES (épreuves et essais béton, tolérances générales d'exécution, réception des supports et des ouvrages, réserves).",
-      },
+      localisationMeo,
+      cloture,
     ];
   }
 
-  // Autres lots : 3 passes (généralités + 2 parties techniques) pour un volume conséquent.
   return [
-    generalites,
+    cadrage,
     {
-      label: "Prescriptions techniques — matériaux & fournitures",
-      chapters: `## PRESCRIPTIONS TECHNIQUES — MATÉRIAUX ET FOURNITURES du lot « ${lot} » : pour chaque famille d'ouvrage, un sous-titre ### détaillant la fourniture (matériaux, caractéristiques, classes, références normatives), avec exigences de qualité.`,
+      label: "Description des ouvrages (ch. 7)",
+      chapters:
+        `## Description des ouvrages du lot « ${lot} » : pour chaque famille d'ouvrage, un sous-titre ### détaillant ` +
+        "la fourniture (matériaux, caractéristiques, classes, références normatives selon juridiction) et les exigences de qualité — " +
+        "uniquement lorsque les sources le permettent, sinon clause prescriptive renvoyant aux études d'exécution.",
     },
-    {
-      label: "Mise en œuvre, contrôles & réception",
-      chapters: `## MISE EN ŒUVRE, CONTRÔLES ET RÉCEPTION du lot « ${lot} » : pour chaque ouvrage (sous-titres ###) la mise en œuvre, les normes/DTU applicables, les contrôles et essais, les tolérances, les interfaces avec les autres lots, puis ## OUVRAGES DIVERS et ## RÉCEPTION DES OUVRAGES.`,
-    },
+    localisationMeo,
+    cloture,
   ];
 }
 
-function baseUser(params: { lot: string; projectType?: string; context?: string; planContext?: string; mode?: GenerationMode; officialCctp?: string; intervenantsTable?: string }) {
+function baseUser(params: CctpGenParams) {
   return `${sourcesBlock(params)}Lot demandé : ${params.lot}
 Type de projet : ${params.projectType ?? "non précisé"}
 Contexte / exigences particulières : ${params.context ?? "aucune"}
 ${params.planContext ? `\nSynthèse des plans du projet (à utiliser pour adapter les prescriptions) :\n${params.planContext}` : ""}
+
+${jurisdictionDirective(params.jurisdiction ?? "Mixte", params.configuredRefs)}
 
 ${cctpModeDirective(params.mode ?? "fidele")}`;
 }
@@ -163,16 +180,9 @@ export function cctpPassCount(lot: string, deep?: boolean): number {
  * pour rester sous la limite de durée des fonctions serverless : 1 requête HTTP
  * = 1 appel IA. passIndex sélectionne la partie à rédiger.
  */
-export async function generateCctpPass(params: {
-  lot: string;
-  projectType?: string;
-  context?: string;
-  planContext?: string;
+export async function generateCctpPass(params: CctpGenParams & {
   deep?: boolean;
   passIndex: number;
-  mode?: GenerationMode;
-  officialCctp?: string;
-  intervenantsTable?: string;
 }): Promise<{ content: string; passCount: number; label: string }> {
   if (!params.deep) {
     const r = await generateCctpSection(params);
@@ -182,13 +192,14 @@ export async function generateCctpPass(params: {
   const pass = passes[Math.max(0, Math.min(params.passIndex, passes.length - 1))];
   const user = `${baseUser(params)}
 
-Rédige UNIQUEMENT, de façon EXHAUSTIVE et au niveau économiste senior, les chapitres suivants :
+${LOT_STRUCTURE_DIRECTIVE}
+
+Rédige UNIQUEMENT, de façon EXHAUSTIVE et au niveau économiste senior, les chapitres suivants du plan type :
 ${pass.chapters}
 
-Pour chaque poste (sous-titre ###) : fourniture, mise en œuvre, normes, contrôles, tolérances, interfaces. Ne rédige PAS les autres chapitres du lot (ils sont traités séparément). Aucune synthèse, aucun résumé.`;
+Pour chaque poste (sous-titre ###) : fourniture, mise en œuvre, normes, contrôles, tolérances, interfaces — sans jamais inventer une donnée absente des sources. Ne rédige PAS les autres chapitres du lot (ils sont traités séparément). Aucune synthèse, aucun résumé.`;
   // Sortie texte (Markdown) + retry. 11000 tokens/passe : finit sous la limite serverless,
   // la longueur totale vient du cumul des passes.
   const content = await callCctpText(user, 11000);
   return { content, passCount: passes.length, label: pass.label };
 }
-

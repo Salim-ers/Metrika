@@ -189,6 +189,131 @@ async function ensureClientCrm() {
   ]) await run(sql);
 }
 
+/**
+ * Migration idempotente « Refonte Document Intelligence » (PostgreSQL).
+ * Ajoute les colonnes de traçabilité/versionnage et les nouvelles tables
+ * (ProjectActor, ValidationIssue, DocumentVersion, ExportJob, PriceLibrary,
+ * ReferenceDoc) aux bases déjà créées. Sentinelle : Cctp.jurisdiction.
+ */
+async function ensureRefonte2026() {
+  if (!/^postgres/i.test(process.env.DATABASE_URL ?? "")) return;
+  const run = async (sql: string) => {
+    try { await prisma.$executeRawUnsafe(sql); }
+    catch (e) { console.warn("[db-init] migration refonte ignorée:", (e as Error).message?.slice(0, 120)); }
+  };
+  try {
+    const rows = await prisma.$queryRawUnsafe<{ column_name: string }[]>(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = 'Cctp' AND column_name = 'jurisdiction'`,
+    );
+    if (rows.length > 0) return; // base à jour
+  } catch { /* en cas de doute, on tente la migration */ }
+
+  for (const sql of [
+    // Project — pilotage / juridiction
+    `ALTER TABLE "Project" ADD COLUMN IF NOT EXISTS "description" TEXT`,
+    `ALTER TABLE "Project" ADD COLUMN IF NOT EXISTS "status" TEXT NOT NULL DEFAULT 'EN_COURS'`,
+    `ALTER TABLE "Project" ADD COLUMN IF NOT EXISTS "jurisdiction" TEXT NOT NULL DEFAULT 'Maroc'`,
+    `ALTER TABLE "Project" ADD COLUMN IF NOT EXISTS "currency" TEXT`,
+    `ALTER TABLE "Project" ADD COLUMN IF NOT EXISTS "vatRate" DOUBLE PRECISION`,
+    // Document — pièces sources identifiées
+    `ALTER TABLE "Document" ADD COLUMN IF NOT EXISTS "category" TEXT`,
+    `ALTER TABLE "Document" ADD COLUMN IF NOT EXISTS "pages" INTEGER`,
+    `ALTER TABLE "Document" ADD COLUMN IF NOT EXISTS "extractedText" TEXT`,
+    // Cctp — mode / juridiction / méta / version
+    `ALTER TABLE "Cctp" ADD COLUMN IF NOT EXISTS "mode" TEXT NOT NULL DEFAULT 'fidele'`,
+    `ALTER TABLE "Cctp" ADD COLUMN IF NOT EXISTS "jurisdiction" TEXT NOT NULL DEFAULT 'Maroc'`,
+    `ALTER TABLE "Cctp" ADD COLUMN IF NOT EXISTS "meta" TEXT`,
+    `ALTER TABLE "Cctp" ADD COLUMN IF NOT EXISTS "planContext" TEXT`,
+    `ALTER TABLE "Cctp" ADD COLUMN IF NOT EXISTS "version" INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE "Cctp" ADD COLUMN IF NOT EXISTS "indice" TEXT NOT NULL DEFAULT 'A'`,
+    `ALTER TABLE "CctpSection" ADD COLUMN IF NOT EXISTS "validated" BOOLEAN NOT NULL DEFAULT false`,
+    // Dpgf — mode / provisoire / devise / version
+    `ALTER TABLE "Dpgf" ADD COLUMN IF NOT EXISTS "mode" TEXT NOT NULL DEFAULT 'dpgf'`,
+    `ALTER TABLE "Dpgf" ADD COLUMN IF NOT EXISTS "provisional" BOOLEAN NOT NULL DEFAULT true`,
+    `ALTER TABLE "Dpgf" ADD COLUMN IF NOT EXISTS "currency" TEXT`,
+    `ALTER TABLE "Dpgf" ADD COLUMN IF NOT EXISTS "vatRate" DOUBLE PRECISION NOT NULL DEFAULT 20`,
+    `ALTER TABLE "Dpgf" ADD COLUMN IF NOT EXISTS "version" INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE "Dpgf" ADD COLUMN IF NOT EXISTS "indice" TEXT NOT NULL DEFAULT 'A'`,
+    // DpgfLine — traçabilité complète + lien article CCTP
+    `ALTER TABLE "DpgfLine" ADD COLUMN IF NOT EXISTS "status" TEXT`,
+    `ALTER TABLE "DpgfLine" ADD COLUMN IF NOT EXISTS "confidence" TEXT`,
+    `ALTER TABLE "DpgfLine" ADD COLUMN IF NOT EXISTS "sourceExcerpt" TEXT`,
+    `ALTER TABLE "DpgfLine" ADD COLUMN IF NOT EXISTS "calculation" TEXT`,
+    `ALTER TABLE "DpgfLine" ADD COLUMN IF NOT EXISTS "priceSource" TEXT`,
+    `ALTER TABLE "DpgfLine" ADD COLUMN IF NOT EXISTS "comment" TEXT`,
+    `ALTER TABLE "DpgfLine" ADD COLUMN IF NOT EXISTS "cctpSectionId" TEXT`,
+    `ALTER TABLE "DpgfLine" ADD COLUMN IF NOT EXISTS "cctpArticle" TEXT`,
+    `ALTER TABLE "DpgfLine" ADD COLUMN IF NOT EXISTS "locked" BOOLEAN NOT NULL DEFAULT false`,
+    `ALTER TABLE "DpgfLine" ADD CONSTRAINT "DpgfLine_cctpSectionId_fkey" FOREIGN KEY ("cctpSectionId") REFERENCES "CctpSection"("id") ON DELETE SET NULL ON UPDATE CASCADE`,
+    // SousDetail — pertes / cible / traçabilité
+    `ALTER TABLE "SousDetail" ADD COLUMN IF NOT EXISTS "lot" TEXT`,
+    `ALTER TABLE "SousDetail" ADD COLUMN IF NOT EXISTS "quantity" DOUBLE PRECISION NOT NULL DEFAULT 0`,
+    `ALTER TABLE "SousDetail" ADD COLUMN IF NOT EXISTS "wasteRate" DOUBLE PRECISION NOT NULL DEFAULT 0`,
+    `ALTER TABLE "SousDetail" ADD COLUMN IF NOT EXISTS "targetPrice" DOUBLE PRECISION`,
+    `ALTER TABLE "SousDetail" ADD COLUMN IF NOT EXISTS "hypotheses" TEXT`,
+    `ALTER TABLE "SousDetail" ADD COLUMN IF NOT EXISTS "sources" TEXT`,
+    `ALTER TABLE "SousDetail" ADD COLUMN IF NOT EXISTS "pointsToVerify" TEXT`,
+    `ALTER TABLE "SousDetail" ADD COLUMN IF NOT EXISTS "validated" BOOLEAN NOT NULL DEFAULT false`,
+    `ALTER TABLE "SousDetail" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP`,
+    `ALTER TABLE "SousDetailComponent" ADD COLUMN IF NOT EXISTS "costSource" TEXT`,
+    // PriceItem — rattachement bibliothèque
+    `ALTER TABLE "PriceItem" ADD COLUMN IF NOT EXISTS "libraryId" TEXT`,
+    // Nouvelles tables
+    `CREATE TABLE IF NOT EXISTS "ProjectActor" (
+        "id" TEXT NOT NULL, "projectId" TEXT NOT NULL, "role" TEXT NOT NULL,
+        "value" TEXT NOT NULL, "sourceFile" TEXT, "sourcePage" TEXT,
+        "confidence" TEXT NOT NULL DEFAULT 'medium', "status" TEXT NOT NULL DEFAULT 'missing',
+        "notes" TEXT,
+        CONSTRAINT "ProjectActor_pkey" PRIMARY KEY ("id")
+     )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "ProjectActor_projectId_role_key" ON "ProjectActor"("projectId", "role")`,
+    `ALTER TABLE "ProjectActor" ADD CONSTRAINT "ProjectActor_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE`,
+    `CREATE TABLE IF NOT EXISTS "PriceLibrary" (
+        "id" TEXT NOT NULL, "name" TEXT NOT NULL,
+        "jurisdiction" TEXT NOT NULL DEFAULT 'Maroc', "currency" TEXT NOT NULL DEFAULT 'MAD',
+        "version" TEXT NOT NULL DEFAULT '1', "notes" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "PriceLibrary_pkey" PRIMARY KEY ("id")
+     )`,
+    `ALTER TABLE "PriceItem" ADD CONSTRAINT "PriceItem_libraryId_fkey" FOREIGN KEY ("libraryId") REFERENCES "PriceLibrary"("id") ON DELETE SET NULL ON UPDATE CASCADE`,
+    `CREATE TABLE IF NOT EXISTS "ReferenceDoc" (
+        "id" TEXT NOT NULL, "jurisdiction" TEXT NOT NULL, "lot" TEXT,
+        "code" TEXT NOT NULL, "title" TEXT NOT NULL, "version" TEXT,
+        "status" TEXT NOT NULL DEFAULT 'active',
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "ReferenceDoc_pkey" PRIMARY KEY ("id")
+     )`,
+    `CREATE INDEX IF NOT EXISTS "ReferenceDoc_jurisdiction_lot_idx" ON "ReferenceDoc"("jurisdiction", "lot")`,
+    `CREATE TABLE IF NOT EXISTS "ValidationIssue" (
+        "id" TEXT NOT NULL, "projectId" TEXT, "docType" TEXT NOT NULL, "docId" TEXT,
+        "severity" TEXT NOT NULL DEFAULT 'info', "kind" TEXT NOT NULL, "message" TEXT NOT NULL,
+        "context" TEXT, "resolved" BOOLEAN NOT NULL DEFAULT false,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "resolvedAt" TIMESTAMP(3),
+        CONSTRAINT "ValidationIssue_pkey" PRIMARY KEY ("id")
+     )`,
+    `CREATE INDEX IF NOT EXISTS "ValidationIssue_docType_docId_idx" ON "ValidationIssue"("docType", "docId")`,
+    `CREATE INDEX IF NOT EXISTS "ValidationIssue_projectId_resolved_idx" ON "ValidationIssue"("projectId", "resolved")`,
+    `ALTER TABLE "ValidationIssue" ADD CONSTRAINT "ValidationIssue_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE SET NULL ON UPDATE CASCADE`,
+    `CREATE TABLE IF NOT EXISTS "DocumentVersion" (
+        "id" TEXT NOT NULL, "docType" TEXT NOT NULL, "docId" TEXT NOT NULL,
+        "version" INTEGER NOT NULL, "indice" TEXT, "trigger" TEXT NOT NULL,
+        "payload" TEXT NOT NULL,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "DocumentVersion_pkey" PRIMARY KEY ("id")
+     )`,
+    `CREATE INDEX IF NOT EXISTS "DocumentVersion_docType_docId_idx" ON "DocumentVersion"("docType", "docId")`,
+    `CREATE TABLE IF NOT EXISTS "ExportJob" (
+        "id" TEXT NOT NULL, "docType" TEXT NOT NULL, "docId" TEXT,
+        "format" TEXT NOT NULL, "filename" TEXT NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'DONE', "projectId" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "ExportJob_pkey" PRIMARY KEY ("id")
+     )`,
+    `CREATE INDEX IF NOT EXISTS "ExportJob_projectId_idx" ON "ExportJob"("projectId")`,
+    `ALTER TABLE "ExportJob" ADD CONSTRAINT "ExportJob_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE SET NULL ON UPDATE CASCADE`,
+  ]) await run(sql);
+}
+
 async function doInit() {
   let tablesExist = true;
   try {
@@ -203,6 +328,7 @@ async function doInit() {
   }
   await ensureColumns();
   await ensureClientCrm();
+  await ensureRefonte2026();
 
   // Seed à chaque démarrage d'instance (mis en cache par `ready`, donc au plus
   // une fois par instance) : l'admin est resynchronisé avec ADMIN_EMAIL /

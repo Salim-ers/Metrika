@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { generateSousDetail, computeSousDetail, type PlanImage } from "@/services/sous-detail.service";
+import { generateSousDetail, type PlanImage } from "@/services/sous-detail.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
+/**
+ * Génère la STRUCTURE d'un sous-détail (composants + hypothèses + points à
+ * vérifier). Les coûts unitaires sont toujours à 0 en sortie : ils viennent
+ * de la bibliothèque de prix ou de la saisie utilisateur, jamais de l'IA.
+ */
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
@@ -16,8 +21,7 @@ export async function POST(req: NextRequest) {
   }
   try {
     const sd = await generateSousDetail({ designation: designation ?? "", unit: unit ?? "U", lot, images });
-    const totals = computeSousDetail(sd.components, sd.yield, sd.generalFeesRate, sd.profitRate);
-    return NextResponse.json({ ...sd, ...totals });
+    return NextResponse.json(sd);
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Erreur de génération" },

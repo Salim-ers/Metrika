@@ -14,11 +14,13 @@ export interface DpgfLineInput {
 }
 
 export interface SousDetailComponentInput {
-  type: "MAIN_OEUVRE" | "MATERIAUX" | "MATERIEL";
+  type: "MAIN_OEUVRE" | "MATERIAUX" | "MATERIEL" | "TRANSPORT";
   designation: string;
   unit: string;
   quantity: number;
   unitCost: number;
+  /** Provenance du coût : "bibliotheque" | "manuel" | null = à renseigner. */
+  costSource?: string | null;
 }
 
 export interface QuoteLineInput {

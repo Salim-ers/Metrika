@@ -1,3 +1,6 @@
+warn The configuration property `package.json#prisma` is deprecated and will be removed in Prisma 7. Please migrate to a Prisma config file (e.g., `prisma.config.ts`).
+For more information, see: https://pris.ly/prisma-config
+
 -- CreateSchema
 CREATE SCHEMA IF NOT EXISTS "public";
 
@@ -124,6 +127,11 @@ CREATE TABLE "Project" (
     "reference" TEXT,
     "type" TEXT,
     "location" TEXT,
+    "description" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'EN_COURS',
+    "jurisdiction" TEXT NOT NULL DEFAULT 'Maroc',
+    "currency" TEXT,
+    "vatRate" DOUBLE PRECISION,
     "clientId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -132,13 +140,31 @@ CREATE TABLE "Project" (
 );
 
 -- CreateTable
+CREATE TABLE "ProjectActor" (
+    "id" TEXT NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "role" TEXT NOT NULL,
+    "value" TEXT NOT NULL,
+    "sourceFile" TEXT,
+    "sourcePage" TEXT,
+    "confidence" TEXT NOT NULL DEFAULT 'medium',
+    "status" TEXT NOT NULL DEFAULT 'missing',
+    "notes" TEXT,
+
+    CONSTRAINT "ProjectActor_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Document" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "kind" TEXT NOT NULL,
+    "category" TEXT,
     "mimeType" TEXT,
     "size" INTEGER,
+    "pages" INTEGER,
     "storageKey" TEXT NOT NULL,
+    "extractedText" TEXT,
     "status" TEXT NOT NULL DEFAULT 'DRAFT',
     "projectId" TEXT,
     "userId" TEXT,
@@ -171,6 +197,12 @@ CREATE TABLE "Cctp" (
     "projectType" TEXT,
     "projectId" TEXT,
     "status" TEXT NOT NULL DEFAULT 'DRAFT',
+    "mode" TEXT NOT NULL DEFAULT 'fidele',
+    "jurisdiction" TEXT NOT NULL DEFAULT 'Maroc',
+    "meta" TEXT,
+    "planContext" TEXT,
+    "version" INTEGER NOT NULL DEFAULT 1,
+    "indice" TEXT NOT NULL DEFAULT 'A',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -184,6 +216,7 @@ CREATE TABLE "CctpSection" (
     "lot" TEXT NOT NULL,
     "order" INTEGER NOT NULL DEFAULT 0,
     "content" TEXT NOT NULL,
+    "validated" BOOLEAN NOT NULL DEFAULT false,
 
     CONSTRAINT "CctpSection_pkey" PRIMARY KEY ("id")
 );
@@ -195,6 +228,12 @@ CREATE TABLE "Dpgf" (
     "projectId" TEXT,
     "cctpId" TEXT,
     "status" TEXT NOT NULL DEFAULT 'PENDING_REVIEW',
+    "mode" TEXT NOT NULL DEFAULT 'dpgf',
+    "provisional" BOOLEAN NOT NULL DEFAULT true,
+    "currency" TEXT,
+    "vatRate" DOUBLE PRECISION NOT NULL DEFAULT 20,
+    "version" INTEGER NOT NULL DEFAULT 1,
+    "indice" TEXT NOT NULL DEFAULT 'A',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -213,7 +252,16 @@ CREATE TABLE "DpgfLine" (
     "quantity" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "unitPrice" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "quantitySource" TEXT,
+    "status" TEXT,
+    "confidence" TEXT,
+    "sourceExcerpt" TEXT,
+    "calculation" TEXT,
+    "priceSource" TEXT,
+    "comment" TEXT,
+    "cctpSectionId" TEXT,
+    "cctpArticle" TEXT,
     "validated" BOOLEAN NOT NULL DEFAULT false,
+    "locked" BOOLEAN NOT NULL DEFAULT false,
     "order" INTEGER NOT NULL DEFAULT 0,
 
     CONSTRAINT "DpgfLine_pkey" PRIMARY KEY ("id")
@@ -225,13 +273,22 @@ CREATE TABLE "SousDetail" (
     "dpgfLineId" TEXT,
     "designation" TEXT NOT NULL,
     "unit" TEXT NOT NULL,
+    "lot" TEXT,
+    "quantity" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "yield" DOUBLE PRECISION NOT NULL DEFAULT 1,
     "debourseSec" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "wasteRate" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "generalFeesRate" DOUBLE PRECISION NOT NULL DEFAULT 0.10,
     "profitRate" DOUBLE PRECISION NOT NULL DEFAULT 0.10,
     "sellingPrice" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "targetPrice" DOUBLE PRECISION,
+    "hypotheses" TEXT,
+    "sources" TEXT,
+    "pointsToVerify" TEXT,
     "status" TEXT NOT NULL DEFAULT 'DRAFT',
+    "validated" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "SousDetail_pkey" PRIMARY KEY ("id")
 );
@@ -245,8 +302,22 @@ CREATE TABLE "SousDetailComponent" (
     "unit" TEXT NOT NULL,
     "quantity" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "unitCost" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "costSource" TEXT,
 
     CONSTRAINT "SousDetailComponent_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PriceLibrary" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "jurisdiction" TEXT NOT NULL DEFAULT 'Maroc',
+    "currency" TEXT NOT NULL DEFAULT 'MAD',
+    "version" TEXT NOT NULL DEFAULT '1',
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "PriceLibrary_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -262,6 +333,7 @@ CREATE TABLE "PriceItem" (
     "marginRate" DOUBLE PRECISION NOT NULL DEFAULT 0.10,
     "generalFeesRate" DOUBLE PRECISION NOT NULL DEFAULT 0.10,
     "sellingPrice" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "libraryId" TEXT,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -277,6 +349,65 @@ CREATE TABLE "PriceHistory" (
     "recordedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "PriceHistory_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ReferenceDoc" (
+    "id" TEXT NOT NULL,
+    "jurisdiction" TEXT NOT NULL,
+    "lot" TEXT,
+    "code" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "version" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'active',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ReferenceDoc_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ValidationIssue" (
+    "id" TEXT NOT NULL,
+    "projectId" TEXT,
+    "docType" TEXT NOT NULL,
+    "docId" TEXT,
+    "severity" TEXT NOT NULL DEFAULT 'info',
+    "kind" TEXT NOT NULL,
+    "message" TEXT NOT NULL,
+    "context" TEXT,
+    "resolved" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "resolvedAt" TIMESTAMP(3),
+
+    CONSTRAINT "ValidationIssue_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "DocumentVersion" (
+    "id" TEXT NOT NULL,
+    "docType" TEXT NOT NULL,
+    "docId" TEXT NOT NULL,
+    "version" INTEGER NOT NULL,
+    "indice" TEXT,
+    "trigger" TEXT NOT NULL,
+    "payload" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "DocumentVersion_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ExportJob" (
+    "id" TEXT NOT NULL,
+    "docType" TEXT NOT NULL,
+    "docId" TEXT,
+    "format" TEXT NOT NULL,
+    "filename" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'DONE',
+    "projectId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ExportJob_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -325,16 +456,34 @@ CREATE UNIQUE INDEX "Account_provider_providerAccountId_key" ON "Account"("provi
 CREATE UNIQUE INDEX "Session_sessionToken_key" ON "Session"("sessionToken");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "SousDetail_dpgfLineId_key" ON "SousDetail"("dpgfLineId");
+CREATE INDEX "ClientDocument_clientId_idx" ON "ClientDocument"("clientId");
 
 -- CreateIndex
-CREATE INDEX "ClientDocument_clientId_idx" ON "ClientDocument"("clientId");
+CREATE UNIQUE INDEX "ProjectActor_projectId_role_key" ON "ProjectActor"("projectId", "role");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "SousDetail_dpgfLineId_key" ON "SousDetail"("dpgfLineId");
 
 -- CreateIndex
 CREATE INDEX "PriceItem_designation_idx" ON "PriceItem"("designation");
 
 -- CreateIndex
 CREATE INDEX "PriceItem_lot_category_idx" ON "PriceItem"("lot", "category");
+
+-- CreateIndex
+CREATE INDEX "ReferenceDoc_jurisdiction_lot_idx" ON "ReferenceDoc"("jurisdiction", "lot");
+
+-- CreateIndex
+CREATE INDEX "ValidationIssue_docType_docId_idx" ON "ValidationIssue"("docType", "docId");
+
+-- CreateIndex
+CREATE INDEX "ValidationIssue_projectId_resolved_idx" ON "ValidationIssue"("projectId", "resolved");
+
+-- CreateIndex
+CREATE INDEX "DocumentVersion_docType_docId_idx" ON "DocumentVersion"("docType", "docId");
+
+-- CreateIndex
+CREATE INDEX "ExportJob_projectId_idx" ON "ExportJob"("projectId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Quote_number_key" ON "Quote"("number");
@@ -346,10 +495,13 @@ ALTER TABLE "Account" ADD CONSTRAINT "Account_userId_fkey" FOREIGN KEY ("userId"
 ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "ClientDocument" ADD CONSTRAINT "ClientDocument_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Project" ADD CONSTRAINT "Project_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "ClientDocument" ADD CONSTRAINT "ClientDocument_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ProjectActor" ADD CONSTRAINT "ProjectActor_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Document" ADD CONSTRAINT "Document_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -379,13 +531,25 @@ ALTER TABLE "Dpgf" ADD CONSTRAINT "Dpgf_cctpId_fkey" FOREIGN KEY ("cctpId") REFE
 ALTER TABLE "DpgfLine" ADD CONSTRAINT "DpgfLine_dpgfId_fkey" FOREIGN KEY ("dpgfId") REFERENCES "Dpgf"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "DpgfLine" ADD CONSTRAINT "DpgfLine_cctpSectionId_fkey" FOREIGN KEY ("cctpSectionId") REFERENCES "CctpSection"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "SousDetail" ADD CONSTRAINT "SousDetail_dpgfLineId_fkey" FOREIGN KEY ("dpgfLineId") REFERENCES "DpgfLine"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "SousDetailComponent" ADD CONSTRAINT "SousDetailComponent_sousDetailId_fkey" FOREIGN KEY ("sousDetailId") REFERENCES "SousDetail"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "PriceItem" ADD CONSTRAINT "PriceItem_libraryId_fkey" FOREIGN KEY ("libraryId") REFERENCES "PriceLibrary"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "PriceHistory" ADD CONSTRAINT "PriceHistory_priceItemId_fkey" FOREIGN KEY ("priceItemId") REFERENCES "PriceItem"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ValidationIssue" ADD CONSTRAINT "ValidationIssue_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ExportJob" ADD CONSTRAINT "ExportJob_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Quote" ADD CONSTRAINT "Quote_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE SET NULL ON UPDATE CASCADE;

@@ -165,7 +165,7 @@ export function hasCctpTag(line: string): boolean {
 // 5. RÔLES D'INTERVENANTS (ne jamais confondre archi / MOE / BET / OPC / CT)
 // ────────────────────────────────────────────────────────────────────────
 
-export type ActorRole = "MOA" | "MOE" | "ARCHITECTE" | "BET_STRUCTURE" | "BET_FLUIDES" | "OPC" | "CONTROLE";
+export type ActorRole = "MOA" | "MOE" | "ARCHITECTE" | "BET_STRUCTURE" | "BET_FLUIDES" | "OPC" | "CONTROLE" | "SPS";
 
 export const ACTOR_ROLES: Record<ActorRole, { label: string; aliases: string[] }> = {
   MOA:           { label: "Maître d'ouvrage",          aliases: ["maitre d'ouvrage", "maître d'ouvrage", "moa", "maitre d ouvrage"] },
@@ -175,13 +175,14 @@ export const ACTOR_ROLES: Record<ActorRole, { label: string; aliases: string[] }
   BET_FLUIDES:   { label: "BET fluides",               aliases: ["bet fluides", "bureau d'etudes fluides", "bet cvc", "bet electricite"] },
   OPC:           { label: "OPC",                       aliases: ["opc", "ordonnancement pilotage coordination", "pilote"] },
   CONTROLE:      { label: "Bureau de contrôle",        aliases: ["bureau de controle", "bureau de contrôle", "controleur technique", "contrôleur technique", "bureau de contrôle technique"] },
+  SPS:           { label: "Coordonnateur SPS",         aliases: ["sps", "coordonnateur sps", "coordination sps", "csps", "sécurité protection de la santé", "securite protection de la sante"] },
 };
 
 /** Détecte le rôle évoqué par un libellé, ou null si ambigu/inconnu. */
 export function detectActorRole(label: string): ActorRole | null {
   const k = label.toLowerCase();
   // On teste du plus spécifique au plus générique pour éviter les collisions.
-  const order: ActorRole[] = ["BET_STRUCTURE", "BET_FLUIDES", "CONTROLE", "OPC", "ARCHITECTE", "MOE", "MOA"];
+  const order: ActorRole[] = ["BET_STRUCTURE", "BET_FLUIDES", "CONTROLE", "SPS", "OPC", "ARCHITECTE", "MOE", "MOA"];
   for (const role of order) {
     if (ACTOR_ROLES[role].aliases.some((a) => k.includes(a))) return role;
   }
@@ -189,7 +190,7 @@ export function detectActorRole(label: string): ActorRole | null {
 }
 
 /** Ordre de référence des intervenants dans la table unique du projet. */
-export const ACTOR_ORDER: ActorRole[] = ["MOA", "MOE", "ARCHITECTE", "BET_STRUCTURE", "BET_FLUIDES", "OPC", "CONTROLE"];
+export const ACTOR_ORDER: ActorRole[] = ["MOA", "MOE", "ARCHITECTE", "BET_STRUCTURE", "BET_FLUIDES", "OPC", "CONTROLE", "SPS"];
 
 /**
  * Rôles qui peuvent LÉGITIMEMENT être tenus par le même intervenant (donc même

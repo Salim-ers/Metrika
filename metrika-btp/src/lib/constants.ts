@@ -1,6 +1,7 @@
 import {
   LayoutDashboard, FileStack, FileText, Table2, Calculator,
   Library, ReceiptText, Settings, LayoutGrid, Languages, Users, ShieldCheck, GitCompare,
+  FolderKanban, FileDown,
 } from "lucide-react";
 
 /** Lots BTP disponibles pour la génération de CCTP (multi-sélection). */
@@ -56,6 +57,7 @@ export const NAV = [
     group: "Pilotage",
     items: [
       { label: "Tableau de bord", href: "/dashboard", icon: LayoutDashboard },
+      { label: "Projets", href: "/projets", icon: FolderKanban },
       { label: "Clients & prospects", href: "/clients", icon: Users },
     ],
   },
@@ -63,13 +65,13 @@ export const NAV = [
     group: "Outils documentaires",
     items: [
       { label: "Vue d’ensemble", href: "/agents", icon: LayoutGrid },
-      { label: "Traduction PDF", href: "/agents/traduction", icon: Languages },
-      { label: "PDF & Images", href: "/agents/pdf", icon: FileStack },
       { label: "CCTP", href: "/agents/cctp", icon: FileText },
-      { label: "DPGF", href: "/agents/dpgf", icon: Table2 },
+      { label: "DPGF / CDPGF", href: "/agents/dpgf", icon: Table2 },
       { label: "Sous-détail de prix", href: "/agents/sous-detail", icon: Calculator },
       { label: "Audit CCTP ↔ DPGF", href: "/agents/audit", icon: ShieldCheck },
       { label: "Comparaison CCTP ↔ CCTP", href: "/agents/compare-cctp", icon: GitCompare },
+      { label: "Traduction PDF", href: "/agents/traduction", icon: Languages },
+      { label: "PDF & Images", href: "/agents/pdf", icon: FileStack },
     ],
   },
   {
@@ -77,10 +79,27 @@ export const NAV = [
     items: [
       { label: "Bibliothèque de prix", href: "/bibliotheque-prix", icon: Library },
       { label: "Devis", href: "/devis", icon: ReceiptText },
+      { label: "Exports", href: "/exports", icon: FileDown },
     ],
   },
   {
     group: "Organisation",
     items: [{ label: "Paramètres entreprise", href: "/parametres", icon: Settings }],
   },
+] as const;
+
+/** Juridictions disponibles pour un projet / CCTP. */
+export const JURISDICTIONS = [
+  { value: "Maroc", label: "Maroc", refs: "NM · RPS 2000 · CCAG-T" },
+  { value: "France", label: "France", refs: "NF DTU · Eurocodes · CCTG" },
+  { value: "Mixte", label: "Mixte (FR + MA)", refs: "Double référentiel" },
+] as const;
+
+/** Statuts projet. */
+export const PROJECT_STATUSES = [
+  { value: "EN_COURS", label: "En cours" },
+  { value: "DCE", label: "DCE" },
+  { value: "CONSULTATION", label: "Consultation" },
+  { value: "TRAVAUX", label: "Travaux" },
+  { value: "ARCHIVE", label: "Archivé" },
 ] as const;

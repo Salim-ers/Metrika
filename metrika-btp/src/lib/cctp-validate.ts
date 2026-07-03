@@ -88,3 +88,63 @@ export function validateCctpContent(text: string, opts?: { mode?: "fidele" | "en
 export function cctpBlockingIssues(issues: CctpIssue[]): CctpIssue[] {
   return issues.filter((i) => i.severity === "blocking");
 }
+
+// ────────────────────────────────────────────────────────────────────────
+// Registre des points à vérifier (extraction mécanique du texte généré)
+// ────────────────────────────────────────────────────────────────────────
+
+export type VerifyPointKind = "a_confirmer" | "a_metrer" | "non_renseigne" | "complement" | "conflit" | "localisation";
+
+export interface VerifyPoint {
+  kind: VerifyPointKind;
+  lot: string;
+  /** Chapitre courant (dernier titre ## rencontré). */
+  chapter?: string;
+  excerpt: string;
+}
+
+const VERIFY_PATTERNS: { kind: VerifyPointKind; re: RegExp }[] = [
+  { kind: "conflit",      re: /contradiction à arbitrer|contradiction a arbitrer|écart entre plans|ecart entre plans/i },
+  { kind: "localisation", re: /localisation à compléter|localisation a completer/i },
+  { kind: "a_metrer",     re: /à métrer|a metrer/i },
+  { kind: "non_renseigne", re: /non renseigné dans les pièces fournies|non renseigne dans les pieces fournies|non trouvé dans les pièces fournies|non trouve dans les pieces fournies/i },
+  { kind: "complement",   re: /\[COMPL[ÉE]MENT METRIKA/i },
+  { kind: "a_confirmer",  re: /\[À CONFIRMER\]|\[A CONFIRMER\]|à confirmer sur plans|a confirmer sur plans/i },
+];
+
+/**
+ * Extrait le REGISTRE DES POINTS À VÉRIFIER d'un jeu de sections CCTP :
+ * chaque ligne marquée « à confirmer / à métrer / non renseigné / complément /
+ * contradiction » devient une entrée traçable (lot + chapitre + extrait).
+ * Base du panneau contrôle qualité et de l'annexe « Points à vérifier ».
+ */
+export function extractVerifyRegister(sections: { lot: string; content: string }[]): VerifyPoint[] {
+  const out: VerifyPoint[] = [];
+  for (const sec of sections) {
+    let chapter: string | undefined;
+    for (const raw of (sec.content ?? "").split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line) continue;
+      if (/^\s{0,3}##\s/.test(raw) && !/^\s{0,3}###/.test(raw)) {
+        chapter = line.replace(/^#+\s*/, "").replace(/\*\*/g, "").trim();
+        continue;
+      }
+      for (const { kind, re } of VERIFY_PATTERNS) {
+        if (re.test(line)) {
+          out.push({ kind, lot: sec.lot, chapter, excerpt: line.replace(/\*\*/g, "").slice(0, 200) });
+          break; // une entrée par ligne (le motif le plus grave d'abord)
+        }
+      }
+    }
+  }
+  return out;
+}
+
+export const VERIFY_KIND_LABELS: Record<VerifyPointKind, string> = {
+  conflit: "Contradiction à arbitrer",
+  localisation: "Localisation à compléter",
+  a_metrer: "À métrer",
+  non_renseigne: "Donnée non renseignée",
+  complement: "Complément Metrika (non contractuel)",
+  a_confirmer: "À confirmer",
+};

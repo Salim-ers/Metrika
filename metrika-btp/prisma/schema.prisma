@@ -9,6 +9,11 @@
 //   3. DATABASE_URL / DIRECT_URL = chaînes Postgres
 // Le reste du schéma est volontairement compatible Postgres ET SQLite
 // (les "enum" sont des String avec valeurs fixes, pas de @db.Text natif).
+//
+// ⚠ Toute évolution ici doit être répercutée dans :
+//   - prisma/schema.production.prisma (datasource différente, modèles identiques)
+//   - src/lib/db-schema-sql.ts        (DDL Postgres bootstrap)
+//   - src/lib/db-init.ts              (migrations idempotentes ensure*)
 
 generator client {
   provider = "prisma-client-js"
@@ -146,45 +151,79 @@ model ClientDocument {
   @@index([clientId])
 }
 
+// ── Projet (pivot de toute la navigation documentaire) ───────────
+// status       : "EN_COURS" | "DCE" | "CONSULTATION" | "TRAVAUX" | "ARCHIVE"
+// jurisdiction : "Maroc" | "France" | "Mixte"
 model Project {
-  id          String   @id @default(cuid())
-  name        String
-  reference   String?
-  type        String?                          // Logement, tertiaire, industriel…
-  location    String?
-  clientId    String?
-  client      Client?  @relation(fields: [clientId], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(cuid())
+  name         String
+  reference    String?
+  type         String?                          // Logement, tertiaire, industriel…
+  location     String?
+  description  String?
+  status       String   @default("EN_COURS")
+  jurisdiction String   @default("Maroc")
+  currency     String?                          // MAD | EUR (défaut : société)
+  vatRate      Float?                           // défaut : société
+  clientId     String?
+  client       Client?  @relation(fields: [clientId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   documents   Document[]
   cctps       Cctp[]
   dpgfs       Dpgf[]
   quotes      Quote[]
+  actors      ProjectActor[]
+  issues      ValidationIssue[]
+  exports     ExportJob[]
+}
+
+// Table UNIQUE des intervenants du projet (7+ rôles canoniques, cf. lib/fidelity).
+// role       : "MOA" | "MOE" | "ARCHITECTE" | "BET_STRUCTURE" | "BET_FLUIDES" | "OPC" | "CONTROLE" | "SPS"
+// status     : "confirmed" | "inferred" | "missing"
+// confidence : "high" | "medium" | "low"
+model ProjectActor {
+  id         String  @id @default(cuid())
+  projectId  String
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  role       String
+  value      String
+  sourceFile String?
+  sourcePage String?
+  confidence String  @default("medium")
+  status     String  @default("missing")
+  notes      String?
+
+  @@unique([projectId, role])
 }
 
 // ── Documents & historique des traitements ───────────────────────
-// kind   : "UPLOAD" | "PDF_MERGED" | "IMAGE_PDF" | "CCTP" | "DPGF" | "SOUS_DETAIL" | "DEVIS" | "OTHER"
-// status : "DRAFT" | "PENDING_REVIEW" | "VALIDATED" | "GENERATED" | "ARCHIVED"
+// kind     : "UPLOAD" | "PDF_MERGED" | "IMAGE_PDF" | "CCTP" | "DPGF" | "SOUS_DETAIL" | "DEVIS" | "OTHER"
+// category : source DCE — "plan" | "cctp" | "cdpgf" | "rapport" | "notice" | "autre"
+// status   : "DRAFT" | "PENDING_REVIEW" | "VALIDATED" | "GENERATED" | "ARCHIVED"
 model Document {
-  id          String        @id @default(cuid())
-  name        String
-  kind        String
-  mimeType    String?
-  size        Int?
-  storageKey  String                            // chemin local ou clé S3
-  status      String        @default("DRAFT")
-  projectId   String?
-  project     Project?      @relation(fields: [projectId], references: [id])
-  userId      String?
-  user        User?         @relation(fields: [userId], references: [id])
-  treatmentId String?
-  treatment   Treatment?    @relation(fields: [treatmentId], references: [id])
-  createdAt   DateTime      @default(now())
+  id            String        @id @default(cuid())
+  name          String
+  kind          String
+  category      String?
+  mimeType      String?
+  size          Int?
+  pages         Int?
+  storageKey    String                            // chemin local ou clé S3/Blob
+  extractedText String?                           // texte extrait (traçabilité / régénération)
+  status        String        @default("DRAFT")
+  projectId     String?
+  project       Project?      @relation(fields: [projectId], references: [id])
+  userId        String?
+  user          User?         @relation(fields: [userId], references: [id])
+  treatmentId   String?
+  treatment     Treatment?    @relation(fields: [treatmentId], references: [id])
+  createdAt     DateTime      @default(now())
 }
 
 // Trace toute opération d'un agent IA (le « journal »)
-// agent  : "PDF" | "CCTP" | "DPGF" | "SOUS_DETAIL" | "PRICING" | "DEVIS"
+// agent  : "PDF" | "CCTP" | "DPGF" | "SOUS_DETAIL" | "PRICING" | "DEVIS" | "EXPORT" | "AUDIT"
 // status : "QUEUED" | "RUNNING" | "AWAITING_VALIDATION" | "DONE" | "FAILED"
 model Treatment {
   id          String        @id @default(cuid())
@@ -202,40 +241,57 @@ model Treatment {
 }
 
 // ── Agent CCTP ────────────────────────────────────────────────────
+// mode         : "fidele" | "enrichi"
+// jurisdiction : "Maroc" | "France" | "Mixte"
 model Cctp {
-  id          String     @id @default(cuid())
-  title       String
-  projectType String?
-  projectId   String?
-  project     Project?   @relation(fields: [projectId], references: [id])
-  status      String     @default("DRAFT")
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  sections    CctpSection[]
-  dpgfs       Dpgf[]
+  id           String     @id @default(cuid())
+  title        String
+  projectType  String?
+  projectId    String?
+  project      Project?   @relation(fields: [projectId], references: [id])
+  status       String     @default("DRAFT")
+  mode         String     @default("fidele")
+  jurisdiction String     @default("Maroc")
+  meta         String?                        // JSON : projectName, owner, architect, bet, dateLabel…
+  planContext  String?                        // synthèse des plans utilisée à la génération
+  version      Int        @default(1)
+  indice       String     @default("A")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  sections     CctpSection[]
+  dpgfs        Dpgf[]
 }
 
 model CctpSection {
-  id       String @id @default(cuid())
-  cctpId   String
-  cctp     Cctp   @relation(fields: [cctpId], references: [id], onDelete: Cascade)
-  lot      String              // ex: "Gros Œuvre"
-  order    Int    @default(0)
-  content  String              // contenu structuré (markdown) éditable avant export
+  id        String  @id @default(cuid())
+  cctpId    String
+  cctp      Cctp    @relation(fields: [cctpId], references: [id], onDelete: Cascade)
+  lot       String              // ex: "Gros Œuvre"
+  order     Int     @default(0)
+  content   String              // contenu structuré (markdown) éditable avant export
+  validated Boolean @default(false)
+  dpgfLines DpgfLine[]
 }
 
 // ── Agent DPGF (Décomposition du Prix Global et Forfaitaire) ──────
+// mode : "dpgf" (métré sans prix) | "cdpgf" (chiffré)
 model Dpgf {
-  id        String     @id @default(cuid())
-  title     String
-  projectId String?
-  project   Project?   @relation(fields: [projectId], references: [id])
-  cctpId    String?
-  cctp      Cctp?      @relation(fields: [cctpId], references: [id])
-  status    String     @default("PENDING_REVIEW")
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  lines     DpgfLine[]
+  id          String     @id @default(cuid())
+  title       String
+  projectId   String?
+  project     Project?   @relation(fields: [projectId], references: [id])
+  cctpId      String?
+  cctp        Cctp?      @relation(fields: [cctpId], references: [id])
+  status      String     @default("PENDING_REVIEW")
+  mode        String     @default("dpgf")
+  provisional Boolean    @default(true)      // true = non contractuel (pas de CDPGF officiel)
+  currency    String?                        // devise du CDPGF officiel si détectée
+  vatRate     Float      @default(20)
+  version     Int        @default(1)
+  indice      String     @default("A")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  lines       DpgfLine[]
 }
 
 model DpgfLine {
@@ -243,15 +299,26 @@ model DpgfLine {
   dpgfId       String
   dpgf         Dpgf     @relation(fields: [dpgfId], references: [id], onDelete: Cascade)
   lot          String
-  code         String?                          // n° d'article
+  code         String?                          // n° d'article (REF)
   designation  String
   description  String?
   unit         String                           // m², ml, m³, U, ens, kg…
   quantity     Float    @default(0)
   unitPrice    Float    @default(0)
-  // Provenance de la quantité : "plan", "cctp", "manuel"
-  quantitySource String?
+  // Traçabilité anti-hallucination (cf. lib/fidelity)
+  quantitySource String?                        // "cdpgf" | "dpgf" | "cctp" | "plan" | "metre" | "none"
+  status       String?                          // confirmed | calculated | to_measure | inferred | conflict | missing
+  confidence   String?                          // high | medium | low
+  sourceExcerpt String?                         // extrait exact justifiant la ligne
+  calculation  String?                          // formule si status = calculated
+  priceSource  String?                          // "bibliotheque" | "manuel" | "cdpgf" | null = à renseigner
+  comment      String?
+  // Lien vers l'article CCTP source
+  cctpSectionId String?
+  cctpSection  CctpSection? @relation(fields: [cctpSectionId], references: [id])
+  cctpArticle  String?                          // intitulé/numéro de l'article dans la section
   validated    Boolean  @default(false)         // validation humaine ligne par ligne
+  locked       Boolean  @default(false)         // ligne verrouillée (plus éditable)
   order        Int      @default(0)
   sousDetail   SousDetail?
 }
@@ -263,18 +330,28 @@ model SousDetail {
   dpgfLine    DpgfLine? @relation(fields: [dpgfLineId], references: [id])
   designation String
   unit        String
+  lot         String?
+  quantity    Float    @default(0)              // quantité de la ligne CDPGF source
   yield       Float    @default(1)              // rendement (U/jour)
   // Synthèse calculée
   debourseSec     Float @default(0)
+  wasteRate       Float @default(0)             // pertes / chutes (% matériaux)
   generalFeesRate Float @default(0.10)          // frais généraux
-  profitRate      Float @default(0.10)          // bénéfice
-  sellingPrice    Float @default(0)             // prix de vente unitaire
+  profitRate      Float @default(0.10)          // marge / bénéfice
+  sellingPrice    Float @default(0)             // prix de vente unitaire HT
+  targetPrice     Float?                        // prix CDPGF de la ligne (calcul d'écart)
+  // Traçabilité
+  hypotheses      String?                       // JSON string[]
+  sources         String?                       // JSON string[]
+  pointsToVerify  String?                       // JSON string[]
   status      String   @default("DRAFT")
+  validated   Boolean  @default(false)
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
   components  SousDetailComponent[]
 }
 
-// type : "MAIN_OEUVRE" | "MATERIAUX" | "MATERIEL"
+// type : "MAIN_OEUVRE" | "MATERIAUX" | "MATERIEL" | "TRANSPORT"
 model SousDetailComponent {
   id           String      @id @default(cuid())
   sousDetailId String
@@ -284,9 +361,23 @@ model SousDetailComponent {
   unit         String
   quantity     Float       @default(0)          // par unité d'ouvrage
   unitCost     Float       @default(0)
+  costSource   String?                          // "bibliotheque" | "manuel" | null = à renseigner
 }
 
 // ── Bibliothèque de prix ──────────────────────────────────────────
+// Conteneur versionné (juridiction / devise). Les PriceItem existants
+// restent valides sans bibliothèque (libraryId nul = bibliothèque globale).
+model PriceLibrary {
+  id           String   @id @default(cuid())
+  name         String
+  jurisdiction String   @default("Maroc")       // Maroc | France
+  currency     String   @default("MAD")
+  version      String   @default("1")
+  notes        String?
+  createdAt    DateTime @default(now())
+  items        PriceItem[]
+}
+
 model PriceItem {
   id            String   @id @default(cuid())
   designation   String
@@ -299,6 +390,8 @@ model PriceItem {
   marginRate    Float    @default(0.10)
   generalFeesRate Float  @default(0.10)
   sellingPrice  Float    @default(0)            // prix de vente recommandé
+  libraryId     String?
+  library       PriceLibrary? @relation(fields: [libraryId], references: [id])
   updatedAt     DateTime @updatedAt
   createdAt     DateTime @default(now())
   history       PriceHistory[]
@@ -314,6 +407,77 @@ model PriceHistory {
   unitPrice   Float
   sellingPrice Float
   recordedAt  DateTime @default(now())
+}
+
+// ── Bibliothèque de références réglementaires (versionnée) ───────
+// jurisdiction : "France" | "Maroc"
+// Aucune référence n'est inventée : la bibliothèque est alimentée par
+// l'utilisateur (Paramètres) puis injectée dans la génération CCTP.
+model ReferenceDoc {
+  id           String   @id @default(cuid())
+  jurisdiction String
+  lot          String?                          // lot concerné (nul = tous)
+  code         String                           // ex. "NF DTU 20.1", "RPS 2000"
+  title        String
+  version      String?                          // édition / année
+  status       String   @default("active")     // active | obsolete
+  createdAt    DateTime @default(now())
+
+  @@index([jurisdiction, lot])
+}
+
+// ── Registre des points de contrôle qualité ───────────────────────
+// docType  : "CCTP" | "DPGF" | "SOUS_DETAIL" | "PREAUDIT" | "COMPARE" | "PROJECT"
+// severity : "bloquant" | "majeur" | "mineur" | "info"
+// kind     : "missing_data" | "hypothesis" | "inconsistency" | "unsourced" | "to_validate" | "override"
+model ValidationIssue {
+  id         String    @id @default(cuid())
+  projectId  String?
+  project    Project?  @relation(fields: [projectId], references: [id])
+  docType    String
+  docId      String?
+  severity   String    @default("info")
+  kind       String
+  message    String
+  context    String?                            // JSON sérialisé
+  resolved   Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  @@index([docType, docId])
+  @@index([projectId, resolved])
+}
+
+// ── Versionnage léger (snapshot JSON à chaque étape clé) ─────────
+// docType : "CCTP" | "DPGF" | "SOUS_DETAIL"
+// trigger : "generation" | "save" | "export" | "lock"
+model DocumentVersion {
+  id        String   @id @default(cuid())
+  docType   String
+  docId     String
+  version   Int
+  indice    String?
+  trigger   String
+  payload   String                              // JSON snapshot complet
+  createdAt DateTime @default(now())
+
+  @@index([docType, docId])
+}
+
+// ── Historique des exports ────────────────────────────────────────
+// format : "PDF" | "DOCX" | "XLSX"
+model ExportJob {
+  id        String   @id @default(cuid())
+  docType   String
+  docId     String?
+  format    String
+  filename  String
+  status    String   @default("DONE")
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
 }
 
 // ── Générateur de devis ───────────────────────────────────────────

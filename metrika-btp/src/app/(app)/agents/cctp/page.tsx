@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,15 +9,26 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { LOTS_BTP, PROJECT_TYPES } from "@/lib/constants";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { Stepper } from "@/components/ui/stepper";
+import { AccordionItem } from "@/components/ui/accordion";
+import { EmptyState } from "@/components/ui/empty-state";
+import { QualityPanel, type QualityGroup } from "@/components/quality/quality-panel";
+import { CctpPreview } from "@/components/document/cctp-preview";
+import { PdfDropzone } from "@/components/ui/pdf-dropzone";
+import { SaveToClient } from "@/components/clients/save-to-client";
+import { LOTS_BTP, PROJECT_TYPES, JURISDICTIONS } from "@/lib/constants";
 import { GENERATION_MODES, type GenerationMode, ACTOR_ROLES, type ActorEntry } from "@/lib/fidelity";
 import { intervenantBlockingErrors } from "@/lib/blocking-errors";
-import { validateCctpContent } from "@/lib/cctp-validate";
+import { validateCctpContent, extractVerifyRegister, VERIFY_KIND_LABELS, type VerifyPointKind } from "@/lib/cctp-validate";
+import { getCompany, getConfiguredRefs, recordExportClient } from "@/lib/client-data";
+import { useProject } from "@/lib/use-project";
 import { cn } from "@/lib/utils";
-import { PdfDropzone } from "@/components/ui/pdf-dropzone";
-import { getCompany } from "@/lib/client-data";
-import { SaveToClient } from "@/components/clients/save-to-client";
-import { Loader2, FileText, ShieldCheck, FileDown, Sparkles, X, ScanText, ChevronDown, ChevronsDownUp, ChevronsUpDown, Timer, ClipboardCheck, AlertTriangle, Users } from "lucide-react";
+import {
+  Loader2, FileText, ShieldCheck, FileDown, Sparkles, X, ScanText, Timer,
+  ClipboardCheck, AlertTriangle, Users, Save, Table2, ArrowRight, Eye, PencilLine,
+  ChevronsDownUp, ChevronsUpDown, FolderKanban,
+} from "lucide-react";
 
 interface Section { lot: string; content: string; validated?: boolean }
 interface ActorRow { role: string; value: string; source_file?: string; source_page?: string; confidence: string; status: string }
@@ -26,14 +38,33 @@ interface Preaudit {
   pretPourGeneration: boolean; syntheseRisque: string;
 }
 
-/** Formate des secondes en mm:ss. */
 function fmtDuration(totalSec: number): string {
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+const STEPS = [
+  { key: "pieces", label: "Pièces & paramètres", description: "Projet, lots, sources" },
+  { key: "audit", label: "Audit préalable", description: "Intervenants & écarts" },
+  { key: "generation", label: "Génération & relecture", description: "Validation par section" },
+  { key: "export", label: "Export & chaînage", description: "PDF · DOCX · DPGF" },
+] as const;
+
 export default function CctpPage() {
+  return (
+    <Suspense>
+      <CctpInner />
+    </Suspense>
+  );
+}
+
+function CctpInner() {
+  const router = useRouter();
+  const search = useSearchParams();
+  const { project: activeProject } = useProject();
+
+  // ── Paramètres du document ──
   const [selected, setSelected] = useState<string[]>([]);
   const [projectType, setProjectType] = useState<string>(PROJECT_TYPES[0]);
   const [projectName, setProjectName] = useState("");
@@ -41,35 +72,107 @@ export default function CctpPage() {
   const [architect, setArchitect] = useState("");
   const [bet, setBet] = useState("");
   const [context, setContext] = useState("");
-  const [sections, setSections] = useState<Section[]>([]);
+  const [jurisdiction, setJurisdiction] = useState<string>("Maroc");
+  const [mode, setMode] = useState<GenerationMode>("fidele");
+  const [deep, setDeep] = useState(true);
+
+  // ── Rattachement projet / document sauvegardé ──
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [cctpId, setCctpId] = useState<string | null>(null);
+  const [docStatus, setDocStatus] = useState<string>("DRAFT");
+  const [docVersion, setDocVersion] = useState(1);
+  const [docIndice, setDocIndice] = useState("A");
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  // ── Pièces sources ──
   const [planFiles, setPlanFiles] = useState<File[]>([]);
   const [planContext, setPlanContext] = useState("");
+  const [officialCctpFiles, setOfficialCctpFiles] = useState<File[]>([]);
+  const [officialCctpText, setOfficialCctpText] = useState("");
+
+  // ── Audit / génération ──
+  const [sections, setSections] = useState<Section[]>([]);
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState("");
   const [company, setCompany] = useState<Record<string, unknown> | null>(null);
   const [open, setOpen] = useState<Record<number, boolean>>({});
-  const [deep, setDeep] = useState(true); // mode exhaustif (multi-passes) par défaut
-  const [mode, setMode] = useState<GenerationMode>("fidele"); // fidèle marché par défaut
-  const [elapsed, setElapsed] = useState(0); // chronomètre (secondes)
+  const [elapsed, setElapsed] = useState(0);
   const [lastDuration, setLastDuration] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // R1/R2/R7 — CCTP officiel pilote, table intervenants, pré-audit obligatoire
-  const [officialCctpFiles, setOfficialCctpFiles] = useState<File[]>([]);
-  const [officialCctpText, setOfficialCctpText] = useState("");
   const [actors, setActors] = useState<ActorRow[] | null>(null);
   const [intervenantsTable, setIntervenantsTable] = useState("");
   const [preaudit, setPreaudit] = useState<Preaudit | null>(null);
   const [prepared, setPrepared] = useState(false);
-  const officialRef = useRef(""); // texte du CCTP officiel résolu (réutilisé par generate)
+  const [previewMode, setPreviewMode] = useState(false);
+  const officialRef = useRef("");
   const preparedRef = useRef(false);
+  const configuredRefsRef = useRef("");
+
+  // ── Initialisation : projet actif / query params / document existant ──
+  useEffect(() => { getCompany().then(setCompany); }, []);
+  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
+
+  useEffect(() => {
+    const qProject = search.get("projectId");
+    const pid = qProject || activeProject?.id || null;
+    setProjectId(pid);
+    if (activeProject && (!qProject || qProject === activeProject.id)) {
+      setJurisdiction(activeProject.jurisdiction || "Maroc");
+      if (activeProject.type) setProjectType(activeProject.type);
+      if (!projectName) setProjectName(activeProject.name);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, activeProject?.id]);
+
+  // Chargement d'un CCTP sauvegardé (?id=…)
+  const loadedIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const id = search.get("id");
+    if (!id || loadedIdRef.current === id) return;
+    loadedIdRef.current = id;
+    fetch(`/api/cctp/documents/${id}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d.cctp) { toast.error(d.error ?? "CCTP introuvable."); return; }
+        const c = d.cctp;
+        setCctpId(c.id);
+        setDocStatus(c.status);
+        setDocVersion(c.version);
+        setDocIndice(c.indice);
+        setProjectId(c.projectId ?? null);
+        setJurisdiction(c.jurisdiction ?? "Maroc");
+        setMode(c.mode === "enrichi" ? "enrichi" : "fidele");
+        if (c.projectType) setProjectType(c.projectType);
+        setPlanContext(c.planContext ?? "");
+        const meta = c.meta ? JSON.parse(c.meta) : {};
+        setProjectName(meta.projectName ?? "");
+        setOwner(meta.owner ?? "");
+        setArchitect(meta.architect ?? "");
+        setBet(meta.bet ?? "");
+        const secs = (c.sections ?? []).map((s: { lot: string; content: string; validated: boolean }) => ({
+          lot: s.lot, content: s.content, validated: s.validated,
+        }));
+        setSections(secs);
+        setSelected(secs.map((s: Section) => s.lot));
+        if (c.project?.actors?.length) {
+          setActors(c.project.actors.map((a: ActorRow & { sourceFile?: string; sourcePage?: string }) => ({
+            role: a.role, value: a.value, source_file: a.sourceFile ?? undefined,
+            source_page: a.sourcePage ?? undefined, confidence: a.confidence, status: a.status,
+          })));
+        }
+        setOpen({ 0: true });
+        setDirty(false);
+        toast.success(`CCTP « ${c.title} » chargé (v${c.version}-${c.indice}).`);
+      })
+      .catch(() => toast.error("Chargement du CCTP impossible."));
+  }, [search]);
+
   function invalidatePrep() {
-    if (preparedRef.current) toast.info("Audit invalidé — relancez l’étape 1 après vos modifications.");
+    if (preparedRef.current) toast.info("Audit invalidé — relancez l’étape d’audit après vos modifications.");
     preparedRef.current = false;
     setPrepared(false);
   }
-
-  useEffect(() => { getCompany().then(setCompany); }, []);
-  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
 
   function startTimer() {
     setElapsed(0);
@@ -84,7 +187,7 @@ export default function CctpPage() {
     setLastDuration(Math.round((Date.now() - t0) / 1000));
   }
 
-  function toggle(lot: string) {
+  function toggleLot(lot: string) {
     setSelected((s) => (s.includes(lot) ? s.filter((l) => l !== lot) : [...s, lot]));
     invalidatePrep();
   }
@@ -95,7 +198,6 @@ export default function CctpPage() {
       body: JSON.stringify(payload),
     }).then(async (r) => ({ ok: r.ok, d: await r.json() }));
 
-  /** Plans PDF → images budgétées (lecture côté navigateur). */
   async function rasterizePlans(): Promise<{ data: string; mediaType: string }[]> {
     const out: { data: string; mediaType: string }[] = [];
     if (planFiles.length === 0) return out;
@@ -112,7 +214,6 @@ export default function CctpPage() {
     return out;
   }
 
-  /** CCTP officiel (R1) : texte collé + extraction des PDF (avertit si illisible). */
   async function buildOfficialCctp(): Promise<string> {
     let txt = officialCctpText;
     if (officialCctpFiles.length > 0) {
@@ -127,12 +228,13 @@ export default function CctpPage() {
     return txt.trim();
   }
 
-  /** R7 — Audit préalable OBLIGATOIRE : plans + intervenants + rapport, avant génération. */
+  /** Étape 2 — Audit préalable OBLIGATOIRE (plans + intervenants + rapport). */
   async function prepare() {
     if (selected.length === 0) { toast.error("Sélectionnez au moins un lot."); return; }
     setBusy(true);
     setActors(null); setPreaudit(null); setPrepared(false); preparedRef.current = false;
     try {
+      configuredRefsRef.current = await getConfiguredRefs(jurisdiction, selected);
       const planImages = await rasterizePlans();
       let planCtx = "";
       if (planImages.length) {
@@ -149,7 +251,6 @@ export default function CctpPage() {
       setPhase("Table des intervenants…");
       const iv = await post({ intervenants: true, officialCctp: official, planContext: planCtx });
       if (iv.ok && Array.isArray(iv.d?.actors)) {
-        // On ne garde que les rôles valides (défense contre une réponse dégradée).
         const valid = (iv.d.actors as ActorRow[]).filter((a) => a && typeof a.role === "string" && a.role in ACTOR_ROLES);
         setActors(valid);
         setIntervenantsTable(typeof iv.d.intervenantsTable === "string" ? iv.d.intervenantsTable : "");
@@ -168,18 +269,13 @@ export default function CctpPage() {
       setBusy(false); setPhase("");
     }
   }
-  function toggleOpen(i: number) {
-    setOpen((o) => ({ ...o, [i]: !o[i] }));
-  }
-  function setAllOpen(value: boolean) {
-    setOpen(Object.fromEntries(sections.map((_, i) => [i, value])));
-  }
 
+  function toggleOpen(i: number) { setOpen((o) => ({ ...o, [i]: !o[i] })); }
+  function setAllOpen(value: boolean) { setOpen(Object.fromEntries(sections.map((_, i) => [i, value]))); }
   function updateActor(i: number, patch: Partial<ActorRow>) {
     setActors((arr) => (arr ? arr.map((a, j) => (j === i ? { ...a, ...patch } : a)) : arr));
   }
 
-  /** Table intervenants (corrigée par l'utilisateur) en texte injectable au prompt. */
   function actorsToPromptTable(rows: ActorRow[]): string {
     const lines = rows.map((a) => {
       const label = ACTOR_ROLES[a.role as keyof typeof ACTOR_ROLES]?.label ?? a.role;
@@ -189,6 +285,7 @@ export default function CctpPage() {
     return `TABLE DES INTERVENANTS (à reprendre EXACTEMENT, sans réinterprétation) :\n${lines.join("\n")}`;
   }
 
+  /** Étape 3 — Génération lot par lot (passes séquentielles). */
   async function generate(override = false) {
     if (selected.length === 0) { toast.error("Sélectionnez au moins un lot."); return; }
     if (!prepared) { toast.error("Lancez d'abord l'audit préalable (étape obligatoire)."); return; }
@@ -198,15 +295,14 @@ export default function CctpPage() {
     }
     setBusy(true);
     setSections([]);
+    setCctpId(null); // nouvelle génération = nouveau document
+    setDocStatus("DRAFT"); setDocVersion(1); setDocIndice("A");
     const t0 = startTimer();
     try {
       const planCtx = planContext;
       const official = officialRef.current;
-      // Table intervenants telle que corrigée dans l'UI (sinon celle du serveur).
       const ivTable = actors && actors.length ? actorsToPromptTable(actors) : intervenantsTable;
 
-      // Génération lot par lot ; passes séquentielles avec ajout progressif.
-      // Chaque passe reçoit le CCTP officiel (pilote) + la table des intervenants.
       const built: Section[] = [];
       let anyFail = false;
       for (let li = 0; li < selected.length; li++) {
@@ -216,11 +312,15 @@ export default function CctpPage() {
         if (idx === 0) setOpen({ 0: true });
         setSections([...built]);
         const parts: string[] = [];
-        let pc = deep ? 0 : 1; // 0 = inconnu jusqu'à la 1re réponse
+        let pc = deep ? 0 : 1;
         let pi = 0;
         do {
           setPhase(`${lot} (${li + 1}/${selected.length})${pc > 1 ? ` — partie ${pi + 1}/${pc}` : deep ? ` — partie ${pi + 1}` : ""}…`);
-          const { ok, d } = await post({ lot, projectType, context, planContext: planCtx, deep, passIndex: pi, mode, officialCctp: official, intervenantsTable: ivTable });
+          const { ok, d } = await post({
+            lot, projectType, context, planContext: planCtx, deep, passIndex: pi, mode,
+            jurisdiction, configuredRefs: configuredRefsRef.current,
+            officialCctp: official, intervenantsTable: ivTable,
+          });
           if (typeof d?.passCount === "number" && d.passCount > 0) pc = d.passCount;
           if (pc === 0) pc = 1;
           if (ok && d?.content) parts.push(d.content as string);
@@ -233,6 +333,8 @@ export default function CctpPage() {
       if (built.length === 0) throw new Error("Aucune section générée.");
       stopTimer(t0);
       toast.success(`${built.length} section(s) générée(s) en ${fmtDuration(Math.round((Date.now() - t0) / 1000))}.${anyFail ? " Certaines parties sont à régénérer." : ""}`);
+      // Sauvegarde automatique du brouillon (traçabilité + chaînage DPGF).
+      await saveCctp(built, { silent: false });
     } catch (e) {
       stopTimer(t0);
       toast.error(e instanceof Error ? e.message : "Erreur");
@@ -242,91 +344,223 @@ export default function CctpPage() {
     }
   }
 
+  /** Registre des points à vérifier → issues persistées. */
+  function buildIssues(secs: Section[]) {
+    const register = extractVerifyRegister(secs);
+    const kindMap: Record<VerifyPointKind, { severity: "majeur" | "mineur"; kind: "missing_data" | "hypothesis" | "inconsistency" | "to_validate" }> = {
+      conflit: { severity: "majeur", kind: "inconsistency" },
+      localisation: { severity: "mineur", kind: "missing_data" },
+      a_metrer: { severity: "mineur", kind: "missing_data" },
+      non_renseigne: { severity: "mineur", kind: "missing_data" },
+      complement: { severity: "mineur", kind: "hypothesis" },
+      a_confirmer: { severity: "mineur", kind: "to_validate" },
+    };
+    return register.slice(0, 300).map((p) => ({
+      ...kindMap[p.kind],
+      message: `[${p.lot}${p.chapter ? ` · ${p.chapter}` : ""}] ${p.excerpt}`,
+    }));
+  }
+
+  /** Sauvegarde (création ou mise à jour) du document CCTP. */
+  async function saveCctp(secs?: Section[], opts?: { silent?: boolean }) {
+    const data = secs ?? sections;
+    if (data.length === 0) { toast.error("Rien à sauvegarder."); return; }
+    setSaving(true);
+    try {
+      const meta = { projectName, projectType, owner, architect, bet };
+      const title = projectName
+        ? `CCTP — ${projectName}${data.length === 1 ? ` — ${data[0].lot}` : ""}`
+        : `CCTP — ${data.map((s) => s.lot).join(", ").slice(0, 120)}`;
+      if (!cctpId) {
+        const res = await fetch("/api/cctp/documents", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title, projectId, projectType, mode, jurisdiction, meta,
+            planContext, sections: data, actors, issues: buildIssues(data),
+          }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error);
+        setCctpId(d.cctp.id);
+        setDocStatus(d.cctp.status);
+        setDocVersion(d.cctp.version);
+        setDocIndice(d.cctp.indice);
+        if (!opts?.silent) toast.success("CCTP sauvegardé — retrouvez-le dans le projet.");
+      } else {
+        const res = await fetch(`/api/cctp/documents/${cctpId}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title, meta, sections: data }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error);
+        setDocStatus(d.cctp.status);
+        if (!opts?.silent) toast.success("Modifications enregistrées.");
+      }
+      setDirty(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Sauvegarde impossible.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ── Dérivés ──
   const allValidated = sections.length > 0 && sections.every((s) => s.validated);
   const actorErrors = actors ? intervenantBlockingErrors(actors as unknown as ActorEntry[]) : [];
-  const STATUS_FR: Record<string, string> = { confirmed: "Confirmé", inferred: "Déduit", missing: "Absent" };
-  const STATUS_HINT: Record<string, string> = {
-    confirmed: "Extrait d'une source (pièce / plan / cartouche).",
-    inferred: "Rôle déduit par l'IA — À CONFIRMER ou corriger (corps non fiable tant que déduit).",
-    missing: "Non renseigné dans les pièces fournies (optionnel selon le projet).",
-  };
-  // Garde-fou CCTP côté code : écarts de fidélité du texte généré (R3/R5/R6).
   const cctpIssues = useMemo(
     () => (sections.length ? validateCctpContent(sections.map((s) => s.content).join("\n\n"), { mode, officialCctp: officialRef.current }) : []),
     [sections, mode],
   );
-  // Les contrôles CCTP sont des ALERTES (non bloquantes) : l'export est gardé par
-  // la validation humaine des sections, pas par des heuristiques sur du texte libre.
+  const verifyRegister = useMemo(() => extractVerifyRegister(sections), [sections]);
   const auditReady = !preaudit || preaudit.pretPourGeneration !== false;
   const canGenerate = prepared && actorErrors.length === 0 && auditReady;
   const canExportCctp = allValidated;
+  const locked = docStatus === "VALIDATED";
 
+  const currentStep: (typeof STEPS)[number]["key"] =
+    sections.length > 0 ? (canExportCctp ? "export" : "generation") : prepared ? "audit" : "pieces";
+  const doneSteps = [
+    ...(prepared || sections.length > 0 ? ["pieces"] : []),
+    ...(sections.length > 0 ? ["audit"] : []),
+    ...(canExportCctp ? ["generation"] : []),
+  ];
+
+  const qualityGroups: QualityGroup[] = useMemo(() => {
+    const byKind = (kinds: VerifyPointKind[]) =>
+      verifyRegister.filter((p) => kinds.includes(p.kind)).map((p) => ({
+        message: `${p.lot}${p.chapter ? ` · ${p.chapter}` : ""}`,
+        detail: p.excerpt,
+      }));
+    return [
+      { key: "conflicts", label: "Incohérences / contradictions", tone: "destructive", items: byKind(["conflit"]) },
+      { key: "missing", label: "Données manquantes (à métrer / non renseignées / localisation)", tone: "warning", items: byKind(["a_metrer", "non_renseigne", "localisation"]) },
+      { key: "tovalidate", label: "À confirmer", tone: "warning", items: byKind(["a_confirmer"]) },
+      { key: "hypotheses", label: "Hypothèses & compléments Metrika (non contractuels)", tone: "gold", items: byKind(["complement"]) },
+      {
+        key: "fidelity", label: "Contrôles de fidélité du texte", tone: "muted",
+        items: cctpIssues.map((i) => ({ message: i.message, detail: i.excerpt })),
+      },
+    ];
+  }, [verifyRegister, cctpIssues]);
+
+  // ── Exports ──
   async function exportCctp(kind: "docx" | "pdf") {
     try {
-      const fresh = await getCompany(true); // logo/cachet toujours à jour
+      const fresh = await getCompany(true);
       setCompany(fresh);
       const m = await import("@/lib/export-cctp");
       const data = sections.map((s) => ({ lot: s.lot, content: s.content }));
-      const meta = { projectName, projectType, owner, architect, bet };
+      const meta = {
+        projectName, projectType, owner, architect, bet,
+        jurisdiction, indice: docIndice, version: docVersion,
+        actors: actors ?? undefined,
+        verifyRegister,
+      };
+      const filename = `cctp-${(projectName || "metrika").toLowerCase().replace(/[^a-z0-9]+/gi, "-").slice(0, 60)}.${kind}`;
       if (kind === "docx") await m.exportCctpDocx(data, fresh as never, meta);
       else await m.exportCctpPdf(data, fresh as never, meta);
+      recordExportClient({ docType: "CCTP", format: kind === "pdf" ? "PDF" : "DOCX", filename, docId: cctpId, projectId });
       toast.success("Export généré.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Export impossible");
     }
   }
 
-  // PDF CCTP sans téléchargement (pour enregistrement dans une fiche client).
   async function buildCctpBytes() {
     const fresh = await getCompany(true);
     const m = await import("@/lib/export-cctp");
     const data = sections.map((s) => ({ lot: s.lot, content: s.content }));
-    const meta = { projectName, projectType, owner, architect, bet };
+    const meta = { projectName, projectType, owner, architect, bet, jurisdiction, indice: docIndice, version: docVersion, actors: actors ?? undefined, verifyRegister };
     return m.exportCctpPdf(data, fresh as never, meta, { download: false });
   }
+
+  function goToDpgf() {
+    if (!cctpId) { toast.error("Sauvegardez d'abord le CCTP."); return; }
+    router.push(`/agents/dpgf?cctpId=${cctpId}`);
+  }
+
+  const previewActors = (actors ?? []).map((a) => ({ role: a.role, value: a.value, status: a.status }));
+  const inputCls = "h-10 w-full rounded-md border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring";
 
   return (
     <div className="animate-fade-up">
       <PageHeader
-        eyebrow="Cahier des charges"
+        eyebrow="Agent documentaire"
         title="CCTP"
-        accent="par lot"
-        description="Sélectionnez les lots, générez un CCTP structuré, modifiez-le section par section, puis validez avant export."
+        accent="général & par lot"
+        description="Pièces sources → audit préalable → génération tracée → validation section par section → export. Aucune donnée inventée : ce qui manque est marqué « À confirmer »."
       />
 
-      <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
-        {/* Paramètres */}
+      {/* Contexte document */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {projectId ? (
+          <Badge variant="default" className="gap-1.5">
+            <FolderKanban className="size-3" /> {activeProject?.id === projectId ? activeProject.name : "Projet lié"}
+          </Badge>
+        ) : (
+          <Badge variant="muted" title="Sans projet : le document ne sera pas chaîné au dossier">Sans projet</Badge>
+        )}
+        <Badge variant="gold">{jurisdiction}</Badge>
+        {cctpId ? (
+          <>
+            <Badge variant="outline" className="tabular-nums">v{docVersion} · indice {docIndice}</Badge>
+            <StatusBadge status={docStatus} />
+          </>
+        ) : sections.length > 0 ? (
+          <Badge variant="warning">Non sauvegardé</Badge>
+        ) : null}
+        {dirty && cctpId ? <Badge variant="warning">Modifications non enregistrées</Badge> : null}
+        <div className="ml-auto">
+          <Stepper
+            steps={[...STEPS]}
+            current={currentStep}
+            done={doneSteps}
+            className="hidden md:flex"
+          />
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-[400px_1fr]">
+        {/* ══ Colonne paramètres (étape 1) ══ */}
         <Card className="h-fit">
-          <CardHeader><CardTitle className="text-navy-900">Paramètres du CCTP</CardTitle></CardHeader>
+          <CardHeader className="flex-row items-center justify-between">
+            <CardTitle className="text-navy-900">1 · Pièces & paramètres</CardTitle>
+            {locked && <Badge variant="success">Verrouillé</Badge>}
+          </CardHeader>
           <CardContent className="space-y-5">
-            <div className="space-y-2">
-              <Label>Type de projet</Label>
-              <select
-                value={projectType}
-                onChange={(e) => { setProjectType(e.target.value); invalidatePrep(); }}
-                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-              >
-                {PROJECT_TYPES.map((t) => <option key={t}>{t}</option>)}
-              </select>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Type de projet</Label>
+                <select value={projectType} onChange={(e) => { setProjectType(e.target.value); invalidatePrep(); }} className={inputCls}>
+                  {PROJECT_TYPES.map((t) => <option key={t}>{t}</option>)}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label>Juridiction</Label>
+                <select value={jurisdiction} onChange={(e) => { setJurisdiction(e.target.value); invalidatePrep(); }} className={inputCls}>
+                  {JURISDICTIONS.map((j) => <option key={j.value} value={j.value}>{j.label}</option>)}
+                </select>
+                <p className="text-[11px] text-muted-foreground">{JURISDICTIONS.find((j) => j.value === jurisdiction)?.refs}</p>
+              </div>
             </div>
 
             <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Page de garde (officielle)</p>
               <div className="space-y-2">
                 <Label>Nom du projet</Label>
-                <input value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="Ex : Immeuble collectif de 11 logements" className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                <input value={projectName} onChange={(e) => { setProjectName(e.target.value); setDirty(true); }} placeholder="Ex : Immeuble collectif de 11 logements" className={inputCls} />
               </div>
               <div className="space-y-2">
                 <Label>Maître d’ouvrage</Label>
-                <input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="Ex : OPH Ariège" className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                <input value={owner} onChange={(e) => { setOwner(e.target.value); setDirty(true); }} placeholder="Ex : OPH Ariège" className={inputCls} />
               </div>
               <div className="space-y-2">
                 <Label>Architecte / maîtrise d’œuvre</Label>
-                <input value={architect} onChange={(e) => setArchitect(e.target.value)} placeholder="Cabinet d’architecture…" className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                <input value={architect} onChange={(e) => { setArchitect(e.target.value); setDirty(true); }} placeholder="Cabinet d’architecture…" className={inputCls} />
               </div>
               <div className="space-y-2">
                 <Label>Bureau d’études techniques</Label>
-                <input value={bet} onChange={(e) => setBet(e.target.value)} placeholder="BET structure / fluides…" className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                <input value={bet} onChange={(e) => { setBet(e.target.value); setDirty(true); }} placeholder="BET structure / fluides…" className={inputCls} />
               </div>
             </div>
 
@@ -336,12 +570,14 @@ export default function CctpPage() {
                 {LOTS_BTP.map((lot) => (
                   <button
                     key={lot}
-                    onClick={() => toggle(lot)}
+                    onClick={() => toggleLot(lot)}
+                    disabled={locked}
                     className={cn(
                       "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
                       selected.includes(lot)
                         ? "border-gold-500 bg-gold-500 text-navy-900"
-                        : "border-border bg-card text-navy-700 hover:border-gold-400"
+                        : "border-border bg-card text-navy-700 hover:border-gold-400",
+                      locked && "cursor-not-allowed opacity-50",
                     )}
                   >
                     {lot}
@@ -423,18 +659,18 @@ export default function CctpPage() {
               <input type="checkbox" checked={deep} onChange={(e) => setDeep(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-gold-500" />
               <span>
                 <span className="font-semibold text-navy-800">Mode exhaustif (CCTP DCE complet)</span>
-                <span className="block text-muted-foreground">Plusieurs passes par lot pour un document long et détaillé. Génération plus longue.</span>
+                <span className="block text-muted-foreground">Plusieurs passes par lot suivant le plan type 15 chapitres. Vise un document DCE complet quand les pièces le permettent — sans jamais remplir artificiellement.</span>
               </span>
             </label>
 
             <div className="space-y-2">
               <Button variant={prepared ? "outline" : "gold"} size="lg" className="w-full" disabled={busy} onClick={() => prepare()}>
                 {busy && !prepared ? <Loader2 className="size-4 animate-spin" /> : <ClipboardCheck className="size-4" />}
-                {busy && !prepared ? (phase || "Préparation…") : prepared ? "1. Refaire l'audit préalable" : "1. Préparer & auditer (obligatoire)"}
+                {busy && !prepared ? (phase || "Préparation…") : prepared ? "2 · Refaire l'audit préalable" : "2 · Préparer & auditer (obligatoire)"}
               </Button>
               <Button variant="gold" size="lg" className="w-full" disabled={busy || !canGenerate} onClick={() => generate()}>
                 {busy && prepared ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-                {busy && prepared ? `${phase || "Génération…"} ${fmtDuration(elapsed)}` : "2. Générer le CCTP"}
+                {busy && prepared ? `${phase || "Génération…"} ${fmtDuration(elapsed)}` : "3 · Générer le CCTP"}
               </Button>
               {!prepared && <p className="text-[11px] text-muted-foreground">L’audit préalable (pièces, intervenants, écarts) est obligatoire avant la génération.</p>}
               {prepared && actorErrors.length > 0 && <p className="text-[11px] font-medium text-destructive">Génération bloquée : levez les {actorErrors.length} erreur(s) d’intervenants (table à droite).</p>}
@@ -457,9 +693,9 @@ export default function CctpPage() {
           </CardContent>
         </Card>
 
-        {/* Résultat éditable */}
+        {/* ══ Colonne document ══ */}
         <div className="space-y-4">
-          {/* R7 — Rapport d'audit préalable (obligatoire avant génération) */}
+          {/* Audit préalable */}
           {preaudit && (
             <Card className="border-navy-100">
               <CardHeader className="flex-row items-center justify-between gap-2">
@@ -489,7 +725,7 @@ export default function CctpPage() {
             </Card>
           )}
 
-          {/* R2 — Table unique des intervenants */}
+          {/* Table unique des intervenants */}
           {actors && actors.length > 0 && (
             <Card>
               <CardHeader><CardTitle className="flex items-center gap-2 text-navy-900"><Users className="size-4 text-navy-600" /> Intervenants du projet</CardTitle></CardHeader>
@@ -519,12 +755,13 @@ export default function CctpPage() {
                           <td className="pl-2 py-1.5">
                             <select
                               value={a.status}
-                              title={STATUS_HINT[a.status]}
                               onChange={(e) => updateActor(i, { status: e.target.value })}
                               className={cn("rounded border border-input bg-card px-1.5 py-1 text-xs",
                                 a.status === "confirmed" ? "text-success" : a.status === "inferred" ? "text-warning-foreground" : "text-muted-foreground")}
                             >
-                              {(["confirmed", "inferred", "missing"] as const).map((s) => <option key={s} value={s}>{STATUS_FR[s]}</option>)}
+                              {(["confirmed", "inferred", "missing"] as const).map((s) => (
+                                <option key={s} value={s}>{s === "confirmed" ? "Confirmé" : s === "inferred" ? "Déduit" : "Absent"}</option>
+                              ))}
                             </select>
                           </td>
                         </tr>
@@ -537,104 +774,128 @@ export default function CctpPage() {
           )}
 
           {sections.length === 0 ? (
-            <Card className="flex h-full min-h-[260px] items-center justify-center border-dashed">
-              <div className="text-center">
-                <FileText className="mx-auto size-10 text-muted-foreground/40" />
-                <p className="mt-3 text-sm text-muted-foreground">{prepared ? "Audit prêt. Cliquez « 2. Générer le CCTP »." : "Le CCTP généré apparaîtra ici, section par section."}</p>
-              </div>
-            </Card>
+            <EmptyState
+              icon={FileText}
+              title={prepared ? "Audit prêt — générez le CCTP" : "Le CCTP généré apparaîtra ici"}
+              description={prepared
+                ? "Vérifiez la table des intervenants et le rapport d’audit, puis cliquez « 3 · Générer le CCTP »."
+                : "Renseignez les pièces et paramètres à gauche, puis lancez l’audit préalable (obligatoire)."}
+            />
           ) : (
             <>
               {planContext && (
                 <Card className="border-navy-100 bg-navy-50/40">
                   <CardHeader className="flex-row items-center gap-2">
                     <ScanText className="size-4 text-navy-600" />
-                    <CardTitle className="text-sm text-navy-900">Synthèse des plans</CardTitle>
+                    <CardTitle className="text-sm text-navy-900">Synthèse des plans (source)</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <pre className="max-h-56 overflow-auto whitespace-pre-wrap font-sans text-xs leading-relaxed text-navy-700">{planContext}</pre>
                   </CardContent>
                 </Card>
               )}
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-muted-foreground">
-                  {sections.filter((s) => s.validated).length}/{sections.length} section(s) validée(s)
-                </p>
-                <div className="flex gap-1.5">
-                  <Button variant="ghost" size="sm" onClick={() => setAllOpen(true)}>
-                    <ChevronsUpDown className="size-4" /> Tout déplier
+
+              {/* Barre d'actions document */}
+              <div className="sticky top-[76px] z-10 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-background/95 px-3 py-2 backdrop-blur">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>{sections.filter((s) => s.validated).length}/{sections.length} section(s) validée(s)</span>
+                  {!previewMode && (
+                    <>
+                      <Button variant="ghost" size="sm" onClick={() => setAllOpen(true)}><ChevronsUpDown className="size-4" /> Tout déplier</Button>
+                      <Button variant="ghost" size="sm" onClick={() => setAllOpen(false)}><ChevronsDownUp className="size-4" /> Tout replier</Button>
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Button variant="outline" size="sm" onClick={() => setPreviewMode((v) => !v)}>
+                    {previewMode ? <PencilLine className="size-4" /> : <Eye className="size-4" />}
+                    {previewMode ? "Édition" : "Aperçu document"}
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setAllOpen(false)}>
-                    <ChevronsDownUp className="size-4" /> Tout replier
+                  <Button variant="outline" size="sm" disabled={saving || locked} onClick={() => saveCctp()}>
+                    {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                    {cctpId ? "Enregistrer" : "Sauvegarder"}
                   </Button>
                 </div>
               </div>
 
-              {sections.map((s, i) => {
-                const isOpen = open[i] ?? false;
-                return (
-                  <Card key={i} className="overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => toggleOpen(i)}
-                      className="flex w-full items-center justify-between gap-3 px-6 py-4 text-left transition-colors hover:bg-muted/30"
-                    >
-                      <span className="flex items-center gap-2.5 font-semibold text-navy-900">
-                        <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", isOpen && "rotate-180")} />
-                        {s.lot}
-                      </span>
-                      <span className="flex items-center gap-2">
-                        {s.validated ? <Badge variant="success">Validé</Badge> : <Badge variant="warning">À valider</Badge>}
-                      </span>
-                    </button>
-                    {isOpen && (
-                      <CardContent className="space-y-3 border-t border-border/60 pt-4">
-                        <Textarea
-                          value={s.content ?? ""}
-                          onChange={(e) => setSections((arr) => arr.map((x, j) => j === i ? { ...x, content: e.target.value, validated: false } : x))}
-                          className="min-h-[260px] font-mono text-xs leading-relaxed"
-                        />
-                        <div className="flex justify-end">
-                          <Button
-                            variant={s.validated ? "outline" : "default"}
-                            size="sm"
-                            onClick={() => setSections((arr) => arr.map((x, j) => j === i ? { ...x, validated: !x.validated } : x))}
-                          >
-                            <ShieldCheck className="size-4" /> {s.validated ? "Dévalider" : "Valider la section"}
-                          </Button>
+              {previewMode ? (
+                <CctpPreview
+                  sections={sections}
+                  actors={previewActors}
+                  meta={{
+                    projectName, projectType, owner,
+                    jurisdiction, indice: docIndice, version: docVersion,
+                    companyName: (company?.name as string) ?? undefined,
+                  }}
+                  className="rounded-xl border border-border"
+                />
+              ) : (
+                <div className="space-y-3">
+                  {sections.map((s, i) => {
+                    const isOpen = open[i] ?? false;
+                    const sectionRegister = verifyRegister.filter((p) => p.lot === s.lot);
+                    return (
+                      <AccordionItem
+                        key={i}
+                        open={isOpen}
+                        onToggle={() => toggleOpen(i)}
+                        header={<span className="font-semibold text-navy-900">{s.lot}</span>}
+                        badge={
+                          <>
+                            {sectionRegister.length > 0 && (
+                              <Badge variant="warning" title="Points à vérifier dans cette section">{sectionRegister.length} à vérifier</Badge>
+                            )}
+                            {s.validated ? <Badge variant="success">Validé</Badge> : <Badge variant="warning">À valider</Badge>}
+                          </>
+                        }
+                      >
+                        <div className="space-y-3">
+                          <Textarea
+                            value={s.content ?? ""}
+                            readOnly={locked}
+                            onChange={(e) => { setSections((arr) => arr.map((x, j) => j === i ? { ...x, content: e.target.value, validated: false } : x)); setDirty(true); }}
+                            className="min-h-[280px] font-mono text-xs leading-relaxed"
+                          />
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <Button variant="ghost" size="sm" disabled={!cctpId} title={cctpId ? "Voir/créer les lignes DPGF liées à ce lot" : "Sauvegardez d'abord le CCTP"} onClick={goToDpgf}>
+                              <Table2 className="size-4" /> Lignes DPGF liées
+                            </Button>
+                            <div className="flex gap-2">
+                              {s.validated ? (
+                                <Button variant="outline" size="sm" disabled={locked} onClick={() => { setSections((arr) => arr.map((x, j) => j === i ? { ...x, validated: false } : x)); setDirty(true); }}>
+                                  <AlertTriangle className="size-4" /> Marquer à vérifier
+                                </Button>
+                              ) : (
+                                <Button variant="default" size="sm" disabled={locked} onClick={() => { setSections((arr) => arr.map((x, j) => j === i ? { ...x, validated: true } : x)); setDirty(true); }}>
+                                  <ShieldCheck className="size-4" /> Valider la section
+                                </Button>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      </CardContent>
-                    )}
-                  </Card>
-                );
-              })}
-
-              {/* Contrôles de fidélité du texte généré (R3/R5/R6) — ALERTES non bloquantes */}
-              {cctpIssues.length > 0 && (
-                <Card className="border-warning/40 bg-warning/5">
-                  <CardHeader><CardTitle className="flex items-center gap-2 text-navy-900"><ShieldCheck className="size-4" /> Contrôles de fidélité — {cctpIssues.length} point(s) à vérifier</CardTitle></CardHeader>
-                  <CardContent className="space-y-1.5 text-xs text-navy-800">
-                    <p className="text-muted-foreground">Alertes (non bloquantes) — vérifiez puis validez les sections. L’export reste possible.</p>
-                    <ul className="max-h-48 list-disc space-y-1 overflow-auto pl-4">
-                      {cctpIssues.slice(0, 20).map((it, i) => (
-                        <li key={i}>
-                          <span className="text-warning-foreground">Alerte :</span> {it.message}
-                          {it.excerpt ? <span className="block truncate text-[11px] italic text-muted-foreground">« {it.excerpt} »</span> : null}
-                        </li>
-                      ))}
-                      {cctpIssues.length > 20 ? <li className="text-muted-foreground">… +{cctpIssues.length - 20} autre(s)</li> : null}
-                    </ul>
-                  </CardContent>
-                </Card>
+                      </AccordionItem>
+                    );
+                  })}
+                </div>
               )}
 
+              {/* Contrôle qualité : registre des points à vérifier */}
+              <QualityPanel
+                groups={qualityGroups}
+                title={`Contrôle qualité — registre des points à vérifier (${verifyRegister.length})`}
+              />
+
+              {/* Export & chaînage */}
               <Card className="border-gold-200 bg-gold-50/40">
                 <CardContent className="flex flex-wrap items-center justify-between gap-4 py-4">
-                  <p className="text-sm text-navy-800">
+                  <div className="text-sm text-navy-800">
                     {!allValidated
-                      ? "Validez toutes les sections pour débloquer l’export final."
-                      : "Toutes les sections sont validées. Vous pouvez exporter le document officiel."}
-                  </p>
+                      ? <p>Validez toutes les sections pour débloquer l’export officiel et le chaînage DPGF.</p>
+                      : <p>Toutes les sections sont validées. Exportez le document ou générez le DPGF chaîné.</p>}
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Document généré automatiquement à partir des pièces fournies — validation MOE / BET / Bureau de contrôle requise.
+                    </p>
+                  </div>
                   <div className="flex flex-wrap items-center gap-2">
                     {canExportCctp && (
                       <SaveToClient category="CCTP" filename="cctp-metrika.pdf" build={buildCctpBytes} />
@@ -644,6 +905,9 @@ export default function CctpPage() {
                     </Button>
                     <Button variant="gold" disabled={!canExportCctp} onClick={() => exportCctp("pdf")}>
                       <FileDown className="size-4" /> PDF
+                    </Button>
+                    <Button variant="default" disabled={!canExportCctp || !cctpId} title={!cctpId ? "Sauvegardez d'abord le CCTP" : "Générer le DPGF depuis ce CCTP"} onClick={goToDpgf}>
+                      Générer le DPGF <ArrowRight className="size-4" />
                     </Button>
                   </div>
                 </CardContent>

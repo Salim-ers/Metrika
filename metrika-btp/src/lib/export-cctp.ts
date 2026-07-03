@@ -1,11 +1,18 @@
 "use client";
 
 import { CompanyExport, dataUrlToBytes, winAnsiSafe, legalLines } from "@/lib/export-common";
+import { ACTOR_ROLES, type ActorRole } from "@/lib/fidelity";
 
 export interface CctpSection {
   lot: string;
   content: string;
 }
+
+export interface CctpExportActor { role: string; value: string; status?: string }
+export interface CctpVerifyPoint { kind: string; lot: string; chapter?: string; excerpt: string }
+
+export const VALIDATION_NOTICE =
+  "Document généré automatiquement à partir des pièces fournies — validation MOE / BET / Bureau de contrôle requise.";
 
 /** Métadonnées de page de garde (renseignées dans le générateur CCTP). */
 export interface CctpMeta {
@@ -15,7 +22,16 @@ export interface CctpMeta {
   architect?: string;  // Architecte / maîtrise d'œuvre
   bet?: string;        // Bureau d'études techniques
   dateLabel?: string;
+  jurisdiction?: string;
+  indice?: string;
+  version?: number;
+  /** Table unique des intervenants du projet (remplace owner/architect/bet si fournie). */
+  actors?: CctpExportActor[];
+  /** Registre des points à vérifier → annexe dédiée. */
+  verifyRegister?: CctpVerifyPoint[];
 }
+
+const actorLabel = (role: string): string => ACTOR_ROLES[role as ActorRole]?.label ?? role;
 
 function download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
@@ -120,6 +136,10 @@ export async function exportCctpPdf(
   };
 
   const { items, toc } = buildItems(sections);
+  const register = meta?.verifyRegister ?? [];
+  if (register.length > 0) {
+    toc.push({ level: 0, id: -1, num: "A", text: "Annexe — Registre des points à vérifier" });
+  }
   const lots = sections.map((s) => s.lot).filter(Boolean);
   const ENTRIES_PER_PAGE = 34;
   const tocPageCount = Math.max(1, Math.ceil(toc.length / ENTRIES_PER_PAGE));
@@ -178,16 +198,51 @@ export async function exportCctpPdf(
   for (const ln of listLines) { center(cover, ln, font, 8.5, GREY, by); by -= 11; }
   cy -= boxH + 30;
 
-  // Intervenants
-  const intervenant = (label: string, value?: string) => {
-    if (!value) return;
-    center(cover, label, bold, 9, GOLD, cy); cy -= 13;
-    for (const ln of wrap(value, font, 10, W - 2 * M)) { center(cover, ln, font, 10, NAVY, cy); cy -= 13; }
-    cy -= 8;
-  };
-  intervenant("MAITRE D'OUVRAGE", meta?.owner);
-  intervenant("ARCHITECTE / MAITRISE D'ŒUVRE", meta?.architect);
-  intervenant("BUREAU D'ETUDES TECHNIQUES", meta?.bet);
+  // Intervenants — table unique du projet (8 rôles) si fournie, sinon trio saisi.
+  const actorRows = (meta?.actors ?? []).filter((a) => a && a.value);
+  if (actorRows.length > 0) {
+    const tX = M + 40, tW = W - 2 * (M + 40);
+    const rowH = 15;
+    const tH = rowH * actorRows.length + 10;
+    cover.drawRectangle({ x: tX, y: cy - tH, width: tW, height: tH, borderColor: LIGHT, borderWidth: 0.75 });
+    let ry = cy - 14;
+    for (const a of actorRows) {
+      cover.drawText(safe(actorLabel(a.role).toUpperCase()), { x: tX + 10, y: ry, size: 7.5, font: bold, color: GOLD });
+      const missing = a.status === "missing";
+      const val = wrap(a.value, font, 8.5, tW - 190)[0] ?? "";
+      cover.drawText(safe(val), { x: tX + 170, y: ry, size: 8.5, font: missing ? font : bold, color: missing ? GREY : NAVY });
+      ry -= rowH;
+    }
+    cy -= tH + 14;
+  } else {
+    const intervenant = (label: string, value?: string) => {
+      if (!value) return;
+      center(cover, label, bold, 9, GOLD, cy); cy -= 13;
+      for (const ln of wrap(value, font, 10, W - 2 * M)) { center(cover, ln, font, 10, NAVY, cy); cy -= 13; }
+      cy -= 8;
+    };
+    intervenant("MAITRE D'OUVRAGE", meta?.owner);
+    intervenant("ARCHITECTE / MAITRISE D'ŒUVRE", meta?.architect);
+    intervenant("BUREAU D'ETUDES TECHNIQUES", meta?.bet);
+  }
+
+  // Tableau des versions / indices.
+  {
+    const vX = M + 40, vW = W - 2 * (M + 40);
+    cover.drawLine({ start: { x: vX, y: cy }, end: { x: vX + vW, y: cy }, thickness: 0.5, color: LIGHT });
+    cy -= 12;
+    const cols = [
+      { label: "INDICE", value: meta?.indice ?? "A", x: vX },
+      { label: "VERSION", value: `v${meta?.version ?? 1}`, x: vX + 90 },
+      { label: "DATE", value: dateLabel, x: vX + 180 },
+      { label: "JURIDICTION", value: meta?.jurisdiction ?? "—", x: vX + 300 },
+    ];
+    for (const c of cols) {
+      cover.drawText(safe(c.label), { x: c.x, y: cy, size: 6.5, font: bold, color: GREY });
+      cover.drawText(safe(c.value), { x: c.x, y: cy - 11, size: 9, font: bold, color: NAVY });
+    }
+    cy -= 30;
+  }
 
   // Cachet de l'entreprise (signature officielle), au-dessus du bloc légal.
   if (stampImg) {
@@ -195,9 +250,13 @@ export async function exportCctpPdf(
     cover.drawImage(stampImg, { x: W - M - sw - 6, y: M + 64, width: sw, height: sh, opacity: 0.95 });
   }
 
-  // Pied de page de garde : émetteur + mentions + date
+  // Pied de page de garde : mention de validation + émetteur + mentions + date
   let fy = M + 30;
   const legal = legalLines(company);
+  for (const ln of wrap(VALIDATION_NOTICE, font, 7.5, W - 2 * M).reverse()) {
+    center(cover, ln, font, 7.5, GREY, fy + 26);
+    fy += 10;
+  }
   center(cover, dateLabel, font, 8, GREY, fy + 14);
   cover.drawLine({ start: { x: M, y: fy + 26 }, end: { x: W - M, y: fy + 26 }, thickness: 0.5, color: LIGHT });
   fy = M + 2;
@@ -242,9 +301,45 @@ export async function exportCctpPdf(
       const lines = wrap(it.text, font, 9, W - 2 * M - 16);
       lines.forEach((ln, k) => { ensure(13); page.drawText(safe((k === 0 ? "•  " : "   ") + ln), { x: M + 12, y, size: 9, font, color: NAVY }); y -= 13; });
     } else if (it.kind === "p") {
-      for (const ln of wrap(it.text, font, 9, W - 2 * M)) { ensure(13); page.drawText(safe(ln), { x: M, y, size: 9, font, color: NAVY }); y -= 13; }
+      // Encadré discret pour les paragraphes « à confirmer » (repérage visuel).
+      const flagged = /\[À CONFIRMER\]|\[A CONFIRMER\]/i.test(it.text);
+      const pls = wrap(it.text, font, 9, W - 2 * M - (flagged ? 12 : 0));
+      if (flagged) {
+        ensure(pls.length * 13 + 8);
+        const boxH2 = pls.length * 13 + 6;
+        page.drawRectangle({ x: M, y: y - boxH2 + 11, width: W - 2 * M, height: boxH2, color: rgb(0.99, 0.96, 0.88) });
+        page.drawRectangle({ x: M, y: y - boxH2 + 11, width: 2.5, height: boxH2, color: GOLD });
+      }
+      for (const ln of pls) { ensure(13); page.drawText(safe(ln), { x: M + (flagged ? 8 : 0), y, size: 9, font, color: NAVY }); y -= 13; }
       y -= 2;
     } else { y -= 5; }
+  }
+
+  // ── ANNEXE : registre des points à vérifier ──
+  if (register.length > 0) {
+    ensure(60); y -= 12;
+    page.drawRectangle({ x: M, y: y - 6, width: W - 2 * M, height: 24, color: GOLD });
+    page.drawText(safe("A.  ANNEXE — REGISTRE DES POINTS À VÉRIFIER"), { x: M + 10, y, size: 12, font: bold, color: NAVY });
+    entryPage.set(-1, pageNo);
+    y -= 34;
+    for (const ln of wrap(
+      "Chaque entrée reprend textuellement un point marqué « à confirmer », « à métrer », « non renseigné », une contradiction ou un complément non contractuel. Ces points doivent être levés (MOE / BET / bureau de contrôle) avant diffusion contractuelle.",
+      font, 8, W - 2 * M,
+    )) { ensure(11); page.drawText(safe(ln), { x: M, y, size: 8, font, color: GREY }); y -= 11; }
+    y -= 6;
+    const KIND_FR: Record<string, string> = {
+      conflit: "Contradiction", localisation: "Localisation", a_metrer: "À métrer",
+      non_renseigne: "Non renseigné", complement: "Complément Metrika", a_confirmer: "À confirmer",
+    };
+    register.slice(0, 400).forEach((p, idx) => {
+      const label = `${idx + 1}. [${KIND_FR[p.kind] ?? p.kind}] ${p.lot}${p.chapter ? ` — ${p.chapter}` : ""}`;
+      const labelLines = wrap(label, bold, 8, W - 2 * M);
+      const exLines = wrap(p.excerpt, font, 8, W - 2 * M - 12);
+      ensure(labelLines.length * 11 + exLines.length * 11 + 6);
+      for (const ln of labelLines) { page.drawText(safe(ln), { x: M, y, size: 8, font: bold, color: NAVY }); y -= 11; }
+      for (const ln of exLines) { page.drawText(safe(ln), { x: M + 12, y, size: 8, font, color: GREY }); y -= 11; }
+      y -= 4;
+    });
   }
 
   // ───────────── DESSIN DU SOMMAIRE ─────────────
@@ -317,8 +412,28 @@ export async function exportCctpDocx(sections: CctpSection[], company?: CompanyE
   children.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "Cahier des Clauses Techniques Particulières", italics: true, color: "555555" })] }));
   const lots = sections.map((s) => s.lot).filter(Boolean);
   if (lots.length) children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 120 }, children: [new TextRun({ text: lots.length === 1 ? `LOT : ${lots[0]}` : `LOTS : ${lots.join(", ")}`, bold: true })] }));
-  if (meta?.architect) children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 200 }, children: [new TextRun({ text: "Architecte / Maîtrise d'œuvre : ", bold: true }), new TextRun(meta.architect)] }));
-  if (meta?.bet) children.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "Bureau d'études : ", bold: true }), new TextRun(meta.bet)] }));
+  // Table unique des intervenants (8 rôles) si fournie, sinon trio saisi.
+  const dActors = (meta?.actors ?? []).filter((a) => a && a.value);
+  if (dActors.length > 0) {
+    for (const a of dActors) {
+      children.push(new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 60 },
+        children: [
+          new TextRun({ text: `${actorLabel(a.role)} : `, bold: true, size: 18 }),
+          new TextRun({ text: a.value, size: 18, italics: a.status === "missing", color: a.status === "missing" ? "888888" : undefined }),
+        ],
+      }));
+    }
+  } else {
+    if (meta?.architect) children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 200 }, children: [new TextRun({ text: "Architecte / Maîtrise d'œuvre : ", bold: true }), new TextRun(meta.architect)] }));
+    if (meta?.bet) children.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "Bureau d'études : ", bold: true }), new TextRun(meta.bet)] }));
+  }
+  children.push(new Paragraph({
+    alignment: AlignmentType.CENTER, spacing: { before: 160 },
+    children: [new TextRun({ text: `Indice ${meta?.indice ?? "A"} — v${meta?.version ?? 1} — ${dateLabel}${meta?.jurisdiction ? ` — Juridiction : ${meta.jurisdiction}` : ""}`, size: 16, color: "555555" })],
+  }));
+  children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 120 }, children: [new TextRun({ text: VALIDATION_NOTICE, italics: true, size: 15, color: "9C641B" })] }));
   for (const l of legalLines(company)) children.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: l, size: 14, color: "777777" })] }));
   children.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: dateLabel, size: 16, color: "777777" })] }));
   children.push(new Paragraph({ pageBreakBefore: true, children: [] }));
@@ -337,6 +452,25 @@ export async function exportCctpDocx(sections: CctpSection[], company?: CompanyE
       else children.push(new Paragraph({ children: [new TextRun(text)] }));
     }
   }
+
+  // Annexe — registre des points à vérifier.
+  const dRegister = meta?.verifyRegister ?? [];
+  if (dRegister.length > 0) {
+    const KIND_FR: Record<string, string> = {
+      conflit: "Contradiction", localisation: "Localisation", a_metrer: "À métrer",
+      non_renseigne: "Non renseigné", complement: "Complément Metrika", a_confirmer: "À confirmer",
+    };
+    children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, pageBreakBefore: true, children: [new TextRun("Annexe — Registre des points à vérifier")] }));
+    children.push(new Paragraph({ children: [new TextRun({ text: "Points à lever (MOE / BET / bureau de contrôle) avant diffusion contractuelle.", italics: true, color: "888888" })] }));
+    dRegister.slice(0, 400).forEach((p, idx) => {
+      children.push(new Paragraph({
+        spacing: { before: 100 },
+        children: [new TextRun({ text: `${idx + 1}. [${KIND_FR[p.kind] ?? p.kind}] ${p.lot}${p.chapter ? ` — ${p.chapter}` : ""}`, bold: true })],
+      }));
+      children.push(new Paragraph({ children: [new TextRun({ text: p.excerpt, color: "555555" })] }));
+    });
+  }
+
   const docx = new Document({ sections: [{ children }] });
   download(await Packer.toBlob(docx), "cctp-metrika.docx");
 }

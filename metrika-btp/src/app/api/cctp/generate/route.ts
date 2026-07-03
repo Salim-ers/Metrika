@@ -24,7 +24,9 @@ export async function POST(req: NextRequest) {
   const {
     analyze, planImages, lot, projectType, context, planContext, deep, passIndex, mode,
     intervenants, preaudit, lots, officialCctp, intervenantsTable, cctpText,
+    jurisdiction, configuredRefs,
   } = body;
+  const juri = jurisdiction === "France" || jurisdiction === "Maroc" || jurisdiction === "Mixte" ? jurisdiction : undefined;
 
   try {
     // ── Mode analyse des plans ──
@@ -67,6 +69,8 @@ export async function POST(req: NextRequest) {
         deep: !!deep,
         passIndex: Number(passIndex) || 0,
         mode: mode === "enrichi" ? "enrichi" : "fidele",
+        jurisdiction: juri,
+        configuredRefs: typeof configuredRefs === "string" ? configuredRefs : undefined,
         officialCctp,
         intervenantsTable,
       });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateCctpContent, cctpBlockingIssues } from "./cctp-validate";
+import { validateCctpContent, cctpBlockingIssues, extractVerifyRegister, VERIFY_KIND_LABELS } from "./cctp-validate";
 
 describe("validateCctpContent (garde-fou CCTP côté code)", () => {
   it("signale (sans bloquer) un tag plan peu localisé ([SOURCE PLAN] nu)", () => {
@@ -49,5 +49,66 @@ describe("validateCctpContent (garde-fou CCTP côté code)", () => {
     const all = validateCctpContent("[SOURCE PLAN] x\nNF EN 206 ajoutée.", { mode: "enrichi", officialCctp: "rien" });
     expect(all.length).toBeGreaterThan(0);
     expect(cctpBlockingIssues(all)).toEqual([]);
+  });
+});
+
+describe("extractVerifyRegister (registre des points à vérifier)", () => {
+  const sections = [
+    {
+      lot: "Gros Œuvre",
+      content: [
+        "## Description des ouvrages",
+        "### Dallage",
+        "Épaisseur du dallage [À CONFIRMER] selon étude béton.",
+        "Surface : À métrer après implantation.",
+        "## Localisation",
+        "Localisation à compléter d'après plans [À CONFIRMER].",
+        "## Points à compléter",
+        "Écart entre plans : contradiction à arbitrer entre A-101 et S-201.",
+      ].join("\n"),
+    },
+    {
+      lot: "Peinture",
+      content: [
+        "## Intervenants",
+        "Bureau de contrôle : Non renseigné dans les pièces fournies.",
+        "[COMPLÉMENT METRIKA — NON CONTRACTUEL — À VALIDER BET/MOE] Prévoir une couche d'impression.",
+      ].join("\n"),
+    },
+  ];
+
+  it("collecte chaque marque d'incertitude avec lot + chapitre + extrait", () => {
+    const reg = extractVerifyRegister(sections);
+    expect(reg.length).toBeGreaterThanOrEqual(5);
+    const kinds = reg.map((p) => p.kind);
+    expect(kinds).toContain("a_confirmer");
+    expect(kinds).toContain("a_metrer");
+    expect(kinds).toContain("localisation");
+    expect(kinds).toContain("conflit");
+    expect(kinds).toContain("non_renseigne");
+    expect(kinds).toContain("complement");
+  });
+
+  it("rattache l'entrée au bon lot et au chapitre courant", () => {
+    const reg = extractVerifyRegister(sections);
+    const dallage = reg.find((p) => p.excerpt.includes("Épaisseur du dallage"));
+    expect(dallage?.lot).toBe("Gros Œuvre");
+    expect(dallage?.chapter).toBe("Description des ouvrages");
+  });
+
+  it("le motif le plus grave prime sur une même ligne (conflit > à confirmer)", () => {
+    const reg = extractVerifyRegister([{ lot: "L", content: "contradiction à arbitrer [À CONFIRMER]" }]);
+    expect(reg).toHaveLength(1);
+    expect(reg[0].kind).toBe("conflit");
+  });
+
+  it("document sans incertitude → registre vide", () => {
+    const reg = extractVerifyRegister([{ lot: "L", content: "## Objet du lot\nTravaux définis et sourcés." }]);
+    expect(reg).toHaveLength(0);
+  });
+
+  it("chaque type de point a un libellé d'affichage", () => {
+    const reg = extractVerifyRegister(sections);
+    for (const p of reg) expect(VERIFY_KIND_LABELS[p.kind]).toBeTruthy();
   });
 });

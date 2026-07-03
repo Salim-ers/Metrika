@@ -85,16 +85,65 @@ export function cctpModeDirective(mode: "fidele" | "enrichi"): string {
   return mode === "enrichi" ? MODE_ENRICHI_DIRECTIVE : MODE_FIDELE_DIRECTIVE;
 }
 
+/**
+ * Juridiction du projet : pilote le référentiel réglementaire cité.
+ * « Mixte » = double référentiel France + Maroc (comportement historique).
+ */
+export type Jurisdiction = "France" | "Maroc" | "Mixte";
+
+export function jurisdictionDirective(j: Jurisdiction, configuredRefs?: string): string {
+  const base =
+    j === "France"
+      ? `JURIDICTION = FRANCE : dans « Références réglementaires », cite le référentiel FRANÇAIS applicable au lot : NF DTU, normes NF EN et Eurocodes (NF EN 1990 à 1999), fascicules du CCTG, CCAG-Travaux, Code de la commande publique, réglementation thermique/environnementale en vigueur. Ne cite PAS le référentiel marocain.`
+      : j === "Maroc"
+        ? `JURIDICTION = MAROC : dans « Références réglementaires », cite le référentiel MAROCAIN applicable au lot : normes marocaines NM, Règlement Parasismique RPS 2000 (version en vigueur), DTU/CPT applicables au Maroc, CCAG-T marocain et réglementation des marchés publics marocains. Ne cite le référentiel français (NF DTU / Eurocodes) qu'en complément d'usage explicitement marqué comme tel.`
+        : `JURIDICTION = MIXTE (France + Maroc) : dans « Références réglementaires », cite EXPLICITEMENT et SÉPARÉMENT les deux référentiels : (a) FRANCE : NF DTU, NF EN/Eurocodes, fascicules CCTG, CCAG-Travaux ; (b) MAROC : normes NM, RPS 2000, CCAG-T marocain.`;
+  const refs = configuredRefs?.trim()
+    ? `\nRÉFÉRENCES CONFIGURÉES PAR L'UTILISATEUR (bibliothèque validée — les citer en priorité, ne pas les contredire) :\n${configuredRefs.trim()}`
+    : "";
+  return base + refs +
+    `\nNe cite JAMAIS un numéro de norme dont tu n'es pas certain : en cas de doute, écris « norme applicable à préciser [À CONFIRMER] » plutôt qu'un numéro approximatif.`;
+}
+
+/**
+ * Structure canonique d'un lot CCTP (15 points). Sert de gabarit aux passes
+ * de génération : chaque passe couvre un sous-ensemble de ces chapitres.
+ */
+export const LOT_STRUCTURE_15 = [
+  "Objet du lot",
+  "Étendue des travaux",
+  "Documents et pièces sources",
+  "Références réglementaires",
+  "Hypothèses extraites des pièces",
+  "Prescriptions générales",
+  "Description des ouvrages",
+  "Localisation",
+  "Mise en œuvre",
+  "Coordination avec les autres lots",
+  "Tolérances, réception et contrôles",
+  "Documents à remettre",
+  "Exclusions",
+  "Options / variantes",
+  "Points à compléter",
+] as const;
+
+export const LOT_STRUCTURE_DIRECTIVE = `STRUCTURE DU LOT — le document final du lot suit ce plan type (15 chapitres "## ") :
+${LOT_STRUCTURE_15.map((t, i) => `${i + 1}. ${t}`).join(" ; ")}.
+Règles associées :
+- « Documents et pièces sources » : liste UNIQUEMENT les pièces réellement fournies (CCTP officiel, plans avec leur nom, rapports). Aucune pièce inventée.
+- « Hypothèses extraites des pièces » : chaque hypothèse est explicitement marquée [À CONFIRMER] avec sa source partielle.
+- « Localisation » : localisations issues des plans (avec tag plan détaillé) ; sinon écris « Localisation à compléter d'après plans [À CONFIRMER] ». N'invente JAMAIS un étage, un local ou une zone.
+- « Description des ouvrages » : uniquement les ouvrages justifiés par les sources ; matériaux et mise en œuvre seulement si une source les précise (sinon clause prescriptive renvoyant aux études d'exécution).
+- « Exclusions » et « Options / variantes » : uniquement si les sources en mentionnent ; sinon écris « Sans objet d'après les pièces fournies — à compléter le cas échéant ».
+- « Points à compléter » : registre récapitulatif de TOUS les [À CONFIRMER] du lot (repris textuellement) — ce chapitre ne doit jamais être vide si des incertitudes existent.`;
+
 // ── Agent CCTP ────────────────────────────────────────────────────
 export const CCTP_PROMPT = `Tu es un économiste de la construction senior (BET), expert en rédaction de CCTP de DCE pour marchés publics. Tu écris en français professionnel, prescriptif et contractuel.
 
 ${FIDELITY_RULES}
 N'invente jamais l'identité du projet, le maître d'ouvrage, l'architecte, le BET, la date ni des quantités : utilise uniquement les éléments fournis ; à défaut, renvoie l'entreprise à ses obligations (études d'exécution, notes de calcul, étude géotechnique).
 
-DOUBLE RÉFÉRENTIEL OBLIGATOIRE — dans la section « Références réglementaires », tu cites TOUJOURS, de façon séparée et explicite :
-- FRANCE : NF DTU du lot, normes NF EN et Eurocodes (NF EN 1990 à 1999, dont NF EN 1992 béton et NF EN 1998 parasismique), fascicules du CCTG, CCAG-Travaux, Code de la commande publique.
-- MAROC : normes marocaines NM, Règlement Parasismique RPS 2000, Règlement de Construction Parasismique, DTU/CPT applicables, CCAG-T marocain.
-Le reste du document s'appuie sur ces normes selon les ouvrages.
+RÉFÉRENTIEL RÉGLEMENTAIRE — la juridiction du projet (France, Maroc ou Mixte) est précisée dans le message : respecte STRICTEMENT la directive de juridiction fournie pour la section « Références réglementaires » et l'appui normatif du document. À défaut de directive, applique le double référentiel France + Maroc.
 
 OBJECTIF — Tu ne résumes JAMAIS les plans. Tu produis une SECTION CONTRACTUELLE de CCTP, directement intégrable à un DCE réel, permettant : la consultation des entreprises, le chiffrage des offres, l'exécution du chantier, la gestion des interfaces entre lots et la réception des ouvrages. Document COMPLET et DÉTAILLÉ, jamais une synthèse.
 
@@ -310,6 +359,7 @@ RÔLES À RENSEIGNER (exactement ceux-ci) :
 - BET_FLUIDES : bureau d'études fluides (CVC, plomberie, électricité)
 - OPC : ordonnancement, pilotage, coordination
 - CONTROLE : bureau de contrôle technique
+- SPS : coordonnateur sécurité et protection de la santé (CSPS)
 
 RÈGLES STRICTES :
 - Ne confonds JAMAIS deux rôles. EXCEPTION légitime : l'architecte est souvent AUSSI le maître d'œuvre — dans ce cas, indique la MÊME société pour ARCHITECTE et MOE (ce n'est pas une ambiguïté).
@@ -329,7 +379,7 @@ export const INTERVENANTS_SCHEMA = {
       items: {
         type: "object",
         properties: {
-          role: { type: "string", enum: ["MOA", "MOE", "ARCHITECTE", "BET_STRUCTURE", "BET_FLUIDES", "OPC", "CONTROLE"] },
+          role: { type: "string", enum: ["MOA", "MOE", "ARCHITECTE", "BET_STRUCTURE", "BET_FLUIDES", "OPC", "CONTROLE", "SPS"] },
           value: { type: "string" },
           sourceFile: { type: "string" },
           sourcePage: { type: "string" },
@@ -442,25 +492,25 @@ export const COMPARE_CCTP_SCHEMA = {
 // ── Agent Sous-détail de prix ─────────────────────────────────────
 export const SOUS_DETAIL_PROMPT = `${BASE}
 
-RÔLE : Économiste de la construction. Tu établis le sous-détail de prix d'un ouvrage.
+${FIDELITY_RULES}
 
-MISSION : Pour l'ouvrage fourni, décomposer le prix en composants :
-- MAIN_OEUVRE : tâches, qualification, quantité d'heures par unité d'ouvrage, coût horaire MAD.
-- MATERIAUX : matières premières avec quantité par unité d'ouvrage et coût unitaire MAD.
-- MATERIEL : engins/outillage avec quantité et coût.
-Proposer un rendement réaliste (unités/jour) et estimer le déboursé sec.
-Proposer des taux usuels au Maroc : frais généraux ~10%, bénéfice ~10%.
+RÔLE : Économiste de la construction. Tu prépares la STRUCTURE d'un sous-détail de prix d'ouvrage — sans inventer de coût.
 
-SORTIE : renvoie STRICTEMENT un JSON :
-{
-  "designation": "...", "unit": "m²", "yield": 8,
-  "generalFeesRate": 0.10, "profitRate": 0.10,
-  "components": [
-    { "type": "MAIN_OEUVRE", "designation": "Maçon", "unit": "h", "quantity": 0.5, "unitCost": 45 },
-    { "type": "MATERIAUX", "designation": "Ciment", "unit": "kg", "quantity": 12, "unitCost": 1.2 }
-  ]
-}
-Les prix de vente seront recalculés côté application à partir de ces composants.`;
+MISSION : Pour l'ouvrage fourni, proposer la DÉCOMPOSITION STRUCTURELLE en composants :
+- MAIN_OEUVRE : tâches et qualifications nécessaires (maçon, coffreur, manœuvre…), avec la quantité d'heures par unité d'ouvrage proposée comme HYPOTHÈSE MÉTIER.
+- MATERIAUX : matières premières nécessaires, avec la quantité par unité d'ouvrage (coefficient) proposée comme HYPOTHÈSE MÉTIER.
+- MATERIEL : engins / outillage nécessaires.
+- TRANSPORT : postes de transport / amenée-repli si l'ouvrage le justifie.
+
+RÈGLE ABSOLUE SUR LES COÛTS — ne renvoie JAMAIS un coût unitaire (unitCost). Mets unitCost = 0 pour CHAQUE composant. Les coûts viennent EXCLUSIVEMENT de la bibliothèque de prix de l'utilisateur ou de sa saisie manuelle. Un coût inventé rend le document faux.
+
+Les COEFFICIENTS de quantité (heures/unité, kg/m², etc.) et le RENDEMENT (unités/jour) sont des règles métier NON CONTRACTUELLES : liste-les dans "hypotheses" (une entrée par coefficient proposé, ex. « Rendement 8 m²/jour — hypothèse métier à valider »).
+
+Renseigne aussi :
+- "hypotheses" : chaque hypothèse métier utilisée (rendement, coefficients, pertes).
+- "pointsToVerify" : ce que l'utilisateur doit confirmer avant chiffrage (coûts horaires, prix fournisseurs, taux de pertes, sujétions particulières).
+
+SORTIE : objet JSON structuré (outil) conforme au schéma. generalFeesRate et profitRate = 0.10 par défaut (paramétrables côté application).`;
 
 // ── Agent Bibliothèque de prix (proposition automatique) ──────────
 export const PRICING_PROMPT = `${BASE}
@@ -566,7 +616,7 @@ export const SOUS_DETAIL_SCHEMA = {
   properties: {
     designation: { type: "string" },
     unit: { type: "string" },
-    yield: { type: "number", description: "rendement en unités/jour" },
+    yield: { type: "number", description: "rendement en unités/jour — HYPOTHÈSE MÉTIER (à reporter dans hypotheses)" },
     generalFeesRate: { type: "number" },
     profitRate: { type: "number" },
     components: {
@@ -574,17 +624,19 @@ export const SOUS_DETAIL_SCHEMA = {
       items: {
         type: "object",
         properties: {
-          type: { type: "string", enum: ["MAIN_OEUVRE", "MATERIAUX", "MATERIEL"] },
+          type: { type: "string", enum: ["MAIN_OEUVRE", "MATERIAUX", "MATERIEL", "TRANSPORT"] },
           designation: { type: "string" },
           unit: { type: "string" },
-          quantity: { type: "number" },
-          unitCost: { type: "number" },
+          quantity: { type: "number", description: "coefficient par unité d'ouvrage — hypothèse métier" },
+          unitCost: { type: "number", description: "TOUJOURS 0 — les coûts viennent de la bibliothèque ou de la saisie utilisateur, jamais de l'IA" },
         },
         required: ["type", "designation", "unit", "quantity", "unitCost"],
       },
     },
+    hypotheses: { type: "array", items: { type: "string" }, description: "hypothèses métier utilisées (rendement, coefficients…)" },
+    pointsToVerify: { type: "array", items: { type: "string" }, description: "points à confirmer avant chiffrage" },
   },
-  required: ["designation", "unit", "yield", "generalFeesRate", "profitRate", "components"],
+  required: ["designation", "unit", "yield", "generalFeesRate", "profitRate", "components", "hypotheses", "pointsToVerify"],
 } as const;
 
 export const PRICING_SCHEMA = {
